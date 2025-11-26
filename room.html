@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Room - Stream X</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #00a8cc;
+            --primary-dark: #0088aa;
+            --primary-light: #1ad1ff;
+            --black: #0f171e;
+            --dark: #1a1a1a;
+            --darker: #0f0f0f;
+            --gray: #2a2a2a;
+            --light-gray: #999;
+            --lighter-gray: #d5d5d5;
+            --white: #ffffff;
+            --gold: #ffa724;
+            --green: #00d95f;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: var(--darker);
+            color: var(--white);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: var(--dark);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo img {
+            width: 32px;
+            height: 32px;
+        }
+
+        .logo h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--white);
+        }
+
+        .logo h1 span {
+            color: var(--green);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--black);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--white);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Main Container */
+        .container {
+            display: flex;
+            height: calc(100vh - 57px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Video Section */
+        .video-section {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            background: var(--black);
+        }
+
+        /* Control Bar */
+        .control-bar {
+            background: var(--dark);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+        }
+
+        .url-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px 15px;
+            color: var(--white);
+            font-size: 14px;
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .url-input::placeholder {
+            color: var(--light-gray);
+        }
+
+        .url-input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .video-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--gray);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            margin-top: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        .video-suggestions.active {
+            display: block;
+        }
+
+        .suggestion-item {
+            padding: 12px 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .suggestion-thumbnail {
+            width: 80px;
+            height: 45px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .suggestion-info {
+            flex: 1;
+        }
+
+        .suggestion-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--white);
+            margin-bottom: 4px;
+        }
+
+        .suggestion-meta {
+            font-size: 12px;
+            color: var(--light-gray);
+        }
+
+        .close-btn {
+            background: rgba(255, 59, 48, 0.2);
+            color: #ff3b30;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 59, 48, 0.3);
+        }
+
+        .source-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .source-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .source-btn.screenshare {
+            background: var(--primary);
+            color: var(--black);
+        }
+
+        .source-btn.vbrowser {
+            background: var(--green);
+            color: var(--black);
+        }
+
+        .source-btn.file {
+            background: #9b59b6;
+            color: var(--white);
+        }
+
+        .source-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Video Player */
+        .video-player {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--black);
+            position: relative;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .empty-state-box {
+            background: rgba(255, 167, 36, 0.15);
+            border: 2px solid rgba(255, 167, 36, 0.3);
+            border-radius: 12px;
+            padding: 30px 40px;
+            display: inline-block;
+        }
+
+        .empty-state h2 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: var(--gold);
+        }
+
+        .empty-state p {
+            font-size: 1rem;
+            color: var(--light-gray);
+        }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.15);
+            border: 2px solid rgba(255, 59, 48, 0.3);
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .error-message h3 {
+            color: #ff3b30;
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .error-message p {
+            font-size: 0.9rem;
+            color: var(--light-gray);
+            margin-bottom: 5px;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 350px;
+            background: var(--dark);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease;
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            z-index: 100;
+        }
+
+        .sidebar.hidden {
+            transform: translateX(350px);
+        }
+
+        .sidebar-header {
+            background: var(--gray);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .room-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--white);
+        }
+
+        .sidebar-tabs {
+            display: flex;
+            background: var(--gray);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            color: var(--light-gray);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .tab.active {
+            color: var(--white);
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .tab .badge {
+            background: var(--primary);
+            color: var(--black);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .tab-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        /* People Tab */
+        .person-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .person-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .person-info {
+            flex: 1;
+        }
+
+        .person-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--white);
+        }
+
+        .person-status {
+            font-size: 12px;
+            color: var(--light-gray);
+        }
+
+        .settings-btn {
+            background: none;
+            border: none;
+            color: var(--light-gray);
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .settings-btn:hover {
+            color: var(--white);
+        }
+
+        /* Playlist Tab */
+        .playlist-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--light-gray);
+        }
+
+        .playlist-empty i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.3;
+        }
+
+        /* Settings Tab */
+        .settings-section {
+            margin-bottom: 25px;
+        }
+
+        .settings-section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--white);
+            margin-bottom: 12px;
+        }
+
+        .setting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .setting-label {
+            font-size: 13px;
+            color: var(--lighter-gray);
+        }
+
+        .toggle {
+            width: 40px;
+            height: 22px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 11px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .toggle.active {
+            background: var(--primary);
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: var(--white);
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .toggle.active::after {
+            left: 20px;
+        }
+
+        /* Chat Section */
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .chat-input-container {
+            padding: 15px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .chat-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px 15px;
+            color: var(--white);
+            font-size: 14px;
+            resize: none;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .chat-input::placeholder {
+            color: var(--light-gray);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                position: absolute;
+                right: -100%;
+                top: 57px;
+                height: calc(100vh - 57px);
+                transition: right 0.3s ease;
+                z-index: 100;
+            }
+
+            .sidebar.active {
+                right: 0;
+            }
+
+            .source-buttons {
+                flex-direction: column;
+            }
+        }
+
+        /* Arrow Button */
+        .arrow-btn {
+            position: fixed;
+            right: 365px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 80px;
+            background: var(--primary);
+            border: none;
+            border-radius: 8px 0 0 8px;
+            color: var(--black);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            z-index: 101;
+        }
+
+        .arrow-btn.moved {
+            right: 15px;
+        }
+
+        .arrow-btn:hover {
+            background: var(--primary-light);
+            width: 40px;
+        }
+
+        @media (max-width: 768px) {
+            .arrow-btn {
+                right: -36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">
+            <h1>WATCH <span>TOGETHER</span></h1>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-primary">
+                <i class="fab fa-discord"></i>
+            </button>
+            <button class="btn btn-primary">
+                <i class="fab fa-github"></i>
+            </button>
+            <button class="btn btn-primary">
+                <i class="fas fa-plus"></i> New Room
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Video Section -->
+        <div class="video-section">
+            <!-- Control Bar -->
+            <div class="control-bar">
+                <div class="url-input-wrapper">
+                    <input type="text" class="url-input" id="urlInput" placeholder="Enter video file URL, magnet link, YouTube link, or YouTube search term">
+                    <div class="video-suggestions" id="videoSuggestions">
+                        <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
+                            <img src="https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
+                            <div class="suggestion-info">
+                                <div class="suggestion-title">Rick Astley - Never Gonna Give You Up</div>
+                                <div class="suggestion-meta">Rick Astley · 1.4B views</div>
+                            </div>
+                        </div>
+                        <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=jNQXAC9IVRw">
+                            <img src="https://img.youtube.com/vi/jNQXAC9IVRw/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
+                            <div class="suggestion-info">
+                                <div class="suggestion-title">Me at the zoo</div>
+                                <div class="suggestion-meta">jawed · 300M views</div>
+                            </div>
+                        </div>
+                        <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=9bZkp7q19f0">
+                            <img src="https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
+                            <div class="suggestion-info">
+                                <div class="suggestion-title">PSY - GANGNAM STYLE</div>
+                                <div class="suggestion-meta">officialpsy · 5B views</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="source-buttons">
+                    <button class="source-btn screenshare">
+                        <i class="fas fa-desktop"></i> Screenshare
+                    </button>
+                    <button class="source-btn vbrowser">
+                        <i class="fas fa-globe"></i> VBrowser
+                    </button>
+                    <button class="source-btn file">
+                        <i class="fas fa-file"></i> File
+                    </button>
+                </div>
+            </div>
+
+            <!-- Video Player -->
+            <div class="video-player" id="videoPlayer">
+                <div class="empty-state" id="emptyState">
+                    <div class="empty-state-box">
+                        <h2>You're not watching anything!</h2>
+                        <p>Pick something to watch above.</p>
+                    </div>
+                    <div class="error-message" id="errorMessage" style="display: none;">
+                        <h3><i class="fas fa-exclamation-triangle"></i> Video Cannot Be Embedded</h3>
+                        <p>This video's owner has disabled embedding.</p>
+                        <p>Please try selecting one of the suggested videos above, or paste a different YouTube URL.</p>
+                    </div>
+                </div>
+                <iframe id="videoFrame" style="display: none; width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Sidebar Header -->
+            <div class="sidebar-header">
+                <div class="room-info">
+                    <i class="fas fa-user"></i>
+                    <span class="room-name">Malicious Girls</span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" style="padding: 6px 12px;">
+                        <i class="fas fa-share-alt"></i>
+                    </button>
+                    <button class="btn btn-secondary" id="shareBtn" style="padding: 6px 12px;">
+                        <i class="fas fa-user-plus"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="sidebar-tabs">
+                <button class="tab active" onclick="switchTab('people')">
+                    <i class="fas fa-users"></i> People
+                    <span class="badge">1</span>
+                </button>
+                <button class="tab" onclick="switchTab('playlist')">
+                    <i class="fas fa-list"></i> Playlist
+                    <span class="badge">0</span>
+                </button>
+                <button class="tab" onclick="switchTab('settings')">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="tabContent">
+                <!-- People Tab -->
+                <div id="peopleTab">
+                    <div class="person-item">
+                        <div class="person-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="person-info">
+                            <div class="person-name">You</div>
+                            <div class="person-status">Online</div>
+                        </div>
+                        <button class="settings-btn">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Playlist Tab -->
+                <div id="playlistTab" style="display: none;">
+                    <div class="playlist-empty">
+                        <i class="fas fa-list"></i>
+                        <p>No videos in playlist</p>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="settingsTab" style="display: none;">
+                    <div class="settings-section">
+                        <h3>Room Settings</h3>
+                        <div class="setting-item">
+                            <span class="setting-label">Lock Room</span>
+                            <div class="toggle" onclick="this.classList.toggle('active')"></div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">Require Approval</span>
+                            <div class="toggle" onclick="this.classList.toggle('active')"></div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3>Video Settings</h3>
+                        <div class="setting-item">
+                            <span class="setting-label">Auto-play Next</span>
+                            <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">Loop Video</span>
+                            <div class="toggle" onclick="this.classList.toggle('active')"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Section -->
+            <div class="chat-section">
+                <div class="chat-messages">
+                    <!-- Chat messages will appear here -->
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" class="chat-input" placeholder="Enter a message...">
+                </div>
+            </div>
+        </div>
+
+        <!-- Arrow Button -->
+        <button class="arrow-btn">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+
+    <script>
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.getElementById('peopleTab').style.display = 'none';
+            document.getElementById('playlistTab').style.display = 'none';
+            document.getElementById('settingsTab').style.display = 'none';
+
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab
+            if (tabName === 'people') {
+                document.getElementById('peopleTab').style.display = 'block';
+                document.querySelectorAll('.tab')[0].classList.add('active');
+            } else if (tabName === 'playlist') {
+                document.getElementById('playlistTab').style.display = 'block';
+                document.querySelectorAll('.tab')[1].classList.add('active');
+            } else if (tabName === 'settings') {
+                document.getElementById('settingsTab').style.display = 'block';
+                document.querySelectorAll('.tab')[2].classList.add('active');
+            }
+        }
+
+        // Arrow button toggle
+        const arrowBtn = document.querySelector('.arrow-btn');
+        const sidebar = document.querySelector('.sidebar');
+        
+        arrowBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('hidden');
+            arrowBtn.classList.toggle('moved');
+            const icon = this.querySelector('i');
+            if (sidebar.classList.contains('hidden')) {
+                icon.classList.remove('fa-chevron-right');
+                icon.classList.add('fa-chevron-left');
+            } else {
+                icon.classList.remove('fa-chevron-left');
+                icon.classList.add('fa-chevron-right');
+            }
+        });
+
+        // Chat input
+        const chatInput = document.querySelector('.chat-input');
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && this.value.trim()) {
+                // In production, this would send the message
+                console.log('Message sent:', this.value);
+                this.value = '';
+            }
+        });
+
+        // Video URL Input Handler
+        const urlInput = document.getElementById('urlInput');
+        const videoFrame = document.getElementById('videoFrame');
+        const emptyState = document.getElementById('emptyState');
+        const closeBtn = document.querySelector('.close-btn');
+        const videoSuggestions = document.getElementById('videoSuggestions');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Function to extract YouTube video ID
+        function getYouTubeVideoId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        // Function to load video
+        function loadVideo(url) {
+            const videoId = getYouTubeVideoId(url);
+            if (videoId) {
+                // Reset error state
+                errorMessage.style.display = 'none';
+                
+                // Create YouTube embed URL
+                const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
+                videoFrame.src = embedUrl;
+                videoFrame.style.display = 'block';
+                emptyState.style.display = 'none';
+                
+                // Listen for iframe load errors
+                videoFrame.onerror = function() {
+                    showError();
+                };
+            } else {
+                alert('Please enter a valid YouTube URL');
+            }
+        }
+        
+        // Function to show error
+        function showError() {
+            videoFrame.style.display = 'none';
+            emptyState.style.display = 'block';
+            errorMessage.style.display = 'block';
+            videoFrame.src = '';
+        }
+
+        // Show suggestions on focus
+        urlInput.addEventListener('focus', function() {
+            videoSuggestions.classList.add('active');
+        });
+
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.url-input-wrapper')) {
+                videoSuggestions.classList.remove('active');
+            }
+        });
+
+        // Handle suggestion click
+        document.querySelectorAll('.suggestion-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const url = this.getAttribute('data-url');
+                urlInput.value = url;
+                loadVideo(url);
+                videoSuggestions.classList.remove('active');
+            });
+        });
+
+        // Handle Enter key in URL input
+        urlInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && this.value.trim()) {
+                loadVideo(this.value.trim());
+                videoSuggestions.classList.remove('active');
+            }
+        });
+
+        // Handle close button
+        closeBtn.addEventListener('click', function() {
+            videoFrame.src = '';
+            videoFrame.style.display = 'none';
+            emptyState.style.display = 'block';
+            errorMessage.style.display = 'none';
+            urlInput.value = '';
+        });
+
+        // Auto-load demo video on page load (optional - remove if you don't want this)
+        window.addEventListener('load', function() {
+            // Uncomment the line below to auto-load the video
+            // loadVideo('https://www.youtube.com/watch?v=_OcHuM-GrQQ');
+        });
+
+        // Share button functionality
+        const shareBtn = document.getElementById('shareBtn');
+        shareBtn.addEventListener('click', function() {
+            // Get current page URL
+            const pageUrl = window.location.href;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(pageUrl).then(function() {
+                // Show success feedback
+                const originalHTML = shareBtn.innerHTML;
+                shareBtn.innerHTML = '<i class="fas fa-check"></i>';
+                shareBtn.style.background = 'rgba(0, 217, 95, 0.2)';
+                shareBtn.style.color = 'var(--green)';
+                
+                // Create a temporary notification
+                const notification = document.createElement('div');
+                notification.textContent = 'Link copied! Share with your friends.';
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 80px;
+                    right: 20px;
+                    background: var(--green);
+                    color: var(--black);
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    z-index: 10000;
+                    animation: slideIn 0.3s ease;
+                `;
+                document.body.appendChild(notification);
+                
+                // Reset button after 2 seconds
+                setTimeout(function() {
+                    shareBtn.innerHTML = originalHTML;
+                    shareBtn.style.background = '';
+                    shareBtn.style.color = '';
+                    notification.remove();
+                }, 2000);
+            }).catch(function(err) {
+                // Fallback for older browsers
+                alert('Copy this URL to share with friends: ' + pageUrl);
+                console.error('Failed to copy:', err);
+            });
+        });
+    </script>
+</body>
+</html>

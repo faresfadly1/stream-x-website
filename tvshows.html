@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TV Shows - Stream X</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #00a8cc;
+            --primary-dark: #0088aa;
+            --primary-light: #1ad1ff;
+            --black: #0f171e;
+            --dark: #1a242f;
+            --darker: #0f171e;
+            --gray: #232f3e;
+            --light-gray: #999;
+            --lighter-gray: #d5d5d5;
+            --white: #ffffff;
+            --gold: #ffa724;
+            --gold-dark: #ff9900;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(to bottom, var(--black) 0%, var(--darker) 100%);
+            color: var(--white);
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            transition: all 0.5s ease;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+        }
+
+        header.scrolled {
+            background-color: var(--dark);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+            padding: 15px 50px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: -0.5px;
+        }
+
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 30px;
+        }
+
+        nav ul li a {
+            color: rgba(255, 255, 255, 0.9);
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 600;
+            transition: color 0.3s ease;
+            letter-spacing: 0.3px;
+        }
+
+        nav ul li a:hover {
+            color: var(--primary-light);
+        }
+
+        .user-actions {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .search-icon {
+            color: var(--white);
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        /* Hero Section */
+        .hero {
+            height: 90vh;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: flex-end;
+            padding: 0 50px 80px;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to top, rgba(15,23,30,1) 0%, rgba(15,23,30,0.7) 30%, rgba(15,23,30,0.3) 70%, rgba(15,23,30,0) 100%);
+            z-index: 1;
+        }
+
+        .hero-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 0;
+            opacity: 1;
+            filter: brightness(0.6);
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 600px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(0, 168, 204, 0.2);
+            color: var(--primary);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            border: 1px solid var(--primary);
+        }
+
+        .hero-content h2 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: var(--white);
+            line-height: 1.1;
+            letter-spacing: -1.5px;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+        }
+
+        .hero-content p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--black);
+            border: none;
+            font-weight: 700;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 168, 204, 0.4);
+        }
+
+        .btn-secondary {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: var(--white);
+            border: none;
+            backdrop-filter: blur(10px);
+            font-weight: 600;
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Featured Section */
+        .featured {
+            padding: 80px 50px;
+            background: var(--darker);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: -0.5px;
+        }
+
+        .section-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: color 0.3s ease;
+        }
+
+        .section-link:hover {
+            color: var(--primary-light);
+        }
+
+        .control-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .shows-container {
+            display: flex;
+            gap: 25px;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            padding: 20px 10px;
+            scrollbar-width: none;
+        }
+
+        .shows-container::-webkit-scrollbar {
+            display: none;
+        }
+
+        .show-card {
+            min-width: 200px;
+            width: 200px;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        .show-card:hover {
+            transform: scale(1.08);
+            z-index: 5;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+        }
+
+        .show-card img {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            display: block;
+            transition: transform 0.3s ease;
+        }
+
+        .show-card:hover img {
+            transform: scale(1.05);
+        }
+
+        .badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: var(--white);
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            z-index: 3;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge.top10 {
+            background: rgba(255, 167, 36, 0.95);
+        }
+
+        .badge.new {
+            background: rgba(0, 168, 204, 0.9);
+        }
+
+        .show-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            z-index: 2;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+        }
+
+        .show-card:hover .show-info {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .show-info h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: var(--white);
+        }
+
+        .show-info .meta {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            color: var(--lighter-gray);
+            margin-bottom: 10px;
+        }
+
+        .show-info .rating {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--gold);
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            header {
+                padding: 15px 20px;
+            }
+
+            nav ul {
+                display: none;
+            }
+
+            .hero {
+                padding: 0 20px 60px;
+            }
+
+            .hero-content h2 {
+                font-size: 2rem;
+            }
+
+            .featured {
+                padding: 60px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="logo">
+            <h1>X shows</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="membership.html">Home</a></li>
+                <li><a href="SR1.html">Movies</a></li>
+                <li><a href="tvshows.html">TV shows</a></li>
+                <li><a href="watchtogether.html">Watch together</a></li>
+                <li><a href="#">New Releases</a></li>
+                <li><a href="#">AI</a></li>
+            </ul>
+        </nav>
+        <div class="user-actions">
+            <i class="fas fa-search search-icon"></i>
+            <div style="display: flex; align-items: center; gap: 5px; color: white; cursor: pointer;">
+                EN <i class="fas fa-chevron-down"></i>
+            </div>
+            <i class="fas fa-th" style="color: white; font-size: 20px; cursor: pointer;"></i>
+            <button class="btn btn-primary" style="padding: 10px 24px; border-radius: 6px; font-size: 14px;">Join X</button>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <img src="it-derry.jpg" alt="IT: Welcome to Derry" class="hero-background">
+        <div class="hero-content">
+            <div class="hero-badge">New series</div>
+            <h2>IT: Welcome to Derry</h2>
+            <p>Return to the cursed town of Derry, Maine, where dark secrets and terrifying horrors await. Experience the chilling origins of evil in this terrifying new series.</p>
+            <div class="hero-buttons">
+                <a href="#" class="btn btn-primary"><i class="fas fa-play"></i> Watch with X<br><small style="font-size: 12px; font-weight: 400;">Start your 30-day free trial</small></a>
+                <button class="btn-secondary" style="width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.2); border: none; color: white; cursor: pointer; font-size: 20px;">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button class="btn-secondary" style="width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.2); border: none; color: white; cursor: pointer; font-size: 20px;">
+                    <i class="fas fa-info-circle"></i>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Top-rated TV series -->
+    <section class="featured">
+        <div class="section-header">
+            <h2 class="section-title">Top-rated TV series on IMDb</h2>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <a href="#" class="section-link">See more <i class="fas fa-chevron-right"></i></a>
+                <div style="display: flex; gap: 15px;">
+                    <button class="control-btn prev-top"><i class="fas fa-chevron-left"></i></button>
+                    <button class="control-btn next-top"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+        </div>
+        <div class="shows-container" id="topShows">
+            <div class="show-card">
+                <span class="badge">Prime</span>
+                <img src="https://m.media-amazon.com/images/M/MV5BMTkxMDQ4MDI2OV5BMl5BanBnXkFtZTgwNzUwNTk4OTE@._V1_.jpg" alt="Reacher">
+                <div class="show-info">
+                    <h3>Reacher</h3>
+                    <div class="meta">
+                        <span>2022</span>
+                        <span>2 Seasons</span>
+                    </div>
+                    <div class="rating">
+                        <i class="fas fa-star"></i>
+                        <span>8.6/10</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="show-card">
+                <span class="badge">Prime</span>
+                <img src="https://m.media-amazon.com/images/M/MV5BODI3NTg1ZWYtMDFiMy00YzQ1LTg3M2ItOTBiNjdlMDI5YzI5XkEyXkFqcGc@._V1_.jpg" alt="Atatürk">
+                <div class="show-info">
+                    <h3>Atatürk</h3>
+                    <div class="meta">
+                        <span>2023</span>
+                        <span>1 Season</span>
+                    </div>
+                    <div class="rating">
+                        <i class="fas fa-star"></i>
+                        <span>9.1/10</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="show-card">
+                <span class="badge top10">TOP 10</span>
+                <img src="https://m.media-amazon.com/images/M/MV5BYjhiNjBlODctY2ZiOC00YjVlLWFlNzAtNTVhNzM1YjI1NzMxXkEyXkFqcGdeQXVyMjkxNzQ1NDI@._V1_.jpg" alt="Fallout">
+                <div class="show-info">
+                    <h3>Fallout</h3>
+                    <div class="meta">
+                        <span>2024</span>
+                        <span>1 Season</span>
+                    </div>
+                    <div class="rating">
+                        <i class="fas fa-star"></i>
+                        <span>8.4/10</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="show-card">
+                <img src="https://m.media-amazon.com/images/M/MV5BNzRiMjg0MzUtYWU5OS00MTI5LWI0NjUtY2Q3MjQyOTZiOGU1XkEyXkFqcGc@._V1_.jpg" alt="Supernatural">
+                <div class="show-info">
+                    <h3>Supernatural</h3>
+                    <div class="meta">
+                        <span>2005-2020</span>
+                        <span>15 Seasons</span>
+                    </div>
+                    <div class="rating">
+                        <i class="fas fa-star"></i>
+                        <span>8.4/10</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="show-card">
+                <span class="badge">Prime</span>
+                <img src="https://m.media-amazon.com/images/M/MV5BMGI0ZmNjNzItMGE3NS00YWE2LTk1YjUtNWE1NmE2ZDdkYjc4XkEyXkFqcGc@._V1_.jpg" alt="The Mentalist">
+                <div class="show-info">
+                    <h3>The Mentalist</h3>
+                    <div class="meta">
+                        <span>2008-2015</span>
+                        <span>7 Seasons</span>
+                    </div>
+                    <div class="rating">
+                        <i class="fas fa-star"></i>
+                        <span>8.1/10</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="show-card">
+                <span class="badge new">NEW</span>
+                <img src="https://m.media-amazon.com/images/M/MV5BN2FiOWU4YWMtZmEyMi00MmM5LTg3YjAtM2M0NmM5MTlmMmU5XkEyXkFqcGdeQXVyMTEzMTI1Mjk3._V1_.jpg" alt="Breaking Bad">
+                <div class="show-info">
+                    <h3>Breaking Bad</h3>
+                    <div class="meta">
+                        <span>2008-2013</span>
+                        <span>5 Seasons</span>
+                    </div>
+                    <div class="rating">
+                        <i class="fas fa-star"></i>
+                        <span>9.5/10</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // Header scroll effect
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // Show carousel navigation
+        const topContainer = document.getElementById('topShows');
+        const prevTopBtn = document.querySelector('.prev-top');
+        const nextTopBtn = document.querySelector('.next-top');
+
+        nextTopBtn.addEventListener('click', function() {
+            topContainer.scrollBy({
+                left: 300,
+                behavior: 'smooth'
+            });
+        });
+
+        prevTopBtn.addEventListener('click', function() {
+            topContainer.scrollBy({
+                left: -300,
+                behavior: 'smooth'
+            });
+        });
+    </script>
+</body>
+</html>

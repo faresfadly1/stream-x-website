@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Together - Stream X</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #00a8cc;
+            --primary-dark: #0088aa;
+            --primary-light: #1ad1ff;
+            --black: #0f171e;
+            --dark: #1a242f;
+            --darker: #0f171e;
+            --gray: #232f3e;
+            --light-gray: #999;
+            --lighter-gray: #d5d5d5;
+            --white: #ffffff;
+            --gold: #ffa724;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a242f 0%, #0f171e 50%, #1a3a2f 100%);
+            color: var(--white);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            background-color: rgba(15, 23, 30, 0.95);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: -0.5px;
+        }
+
+        .logo h1 span {
+            color: var(--primary);
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--black);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 168, 204, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--white);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Video Demo Section */
+        .video-demo {
+            padding: 100px 50px 60px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .demo-content {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .demo-text h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--white);
+            line-height: 1.2;
+        }
+
+        .demo-text p {
+            font-size: 1.2rem;
+            color: var(--lighter-gray);
+            margin-bottom: 30px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .video-player {
+            position: relative;
+            background: var(--dark);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .video-thumbnail {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .video-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--white);
+        }
+
+        .video-controls button {
+            background: none;
+            border: none;
+            color: var(--white);
+            cursor: pointer;
+            padding: 5px 10px;
+            transition: color 0.3s ease;
+        }
+
+        .video-controls button:hover {
+            color: var(--primary);
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        .time, .duration {
+            font-size: 12px;
+            color: var(--white);
+        }
+
+        .video-options {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+        }
+
+        .participant-thumbnails {
+            position: absolute;
+            bottom: 70px;
+            left: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .participant {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .participant img {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            border: 2px solid var(--primary);
+            object-fit: cover;
+        }
+
+        .participant span {
+            font-size: 10px;
+            color: var(--white);
+            margin-top: 3px;
+            text-align: center;
+        }
+
+        .participant .time-stamp {
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 9px;
+        }
+
+        /* Features Grid */
+        .features {
+            padding: 60px 50px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-bottom: 80px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 40px 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--primary);
+            box-shadow: 0 10px 30px rgba(0, 168, 204, 0.2);
+        }
+
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: var(--white);
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: var(--white);
+        }
+
+        .feature-card p {
+            font-size: 0.95rem;
+            color: var(--light-gray);
+            line-height: 1.6;
+        }
+
+        /* How It Works */
+        .how-it-works {
+            padding: 80px 50px;
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .how-it-works h2 {
+            font-size: 2.5rem;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+        }
+
+        .step {
+            position: relative;
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 auto 20px;
+            color: var(--white);
+        }
+
+        .step h3 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            color: var(--white);
+        }
+
+        .step p {
+            font-size: 0.9rem;
+            color: var(--light-gray);
+        }
+
+        /* Video Sources */
+        .video-sources {
+            padding: 80px 50px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .video-sources h2 {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 50px;
+            color: var(--white);
+        }
+
+        .sources-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+        }
+
+        .source-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .source-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: 0 10px 30px rgba(0, 168, 204, 0.2);
+        }
+
+        .source-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .source-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+            color: var(--white);
+        }
+
+        .source-card p {
+            font-size: 0.9rem;
+            color: var(--light-gray);
+        }
+
+        /* Discord Bot Section */
+        .discord-bot {
+            padding: 80px 50px;
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .discord-bot h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: var(--white);
+        }
+
+        .discord-bot p {
+            font-size: 1.1rem;
+            color: var(--light-gray);
+            margin-bottom: 30px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .code-box {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 30px auto;
+            max-width: 600px;
+            text-align: left;
+        }
+
+        .code-box code {
+            color: var(--primary-light);
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+        }
+
+        /* Footer */
+        footer {
+            padding: 40px 50px;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 80px;
+        }
+
+        footer p {
+            color: var(--light-gray);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+            margin: 0 10px;
+        }
+
+        footer a:hover {
+            color: var(--primary-light);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header {
+                padding: 15px 20px;
+            }
+
+            .video-demo {
+                padding: 100px 20px 40px;
+            }
+
+            .demo-content {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .demo-text h1 {
+                font-size: 2rem;
+            }
+
+            .demo-text p {
+                font-size: 1rem;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .participant-thumbnails {
+                bottom: 60px;
+                left: 10px;
+                gap: 5px;
+            }
+
+            .participant img {
+                width: 45px;
+                height: 45px;
+            }
+
+            .features {
+                padding: 40px 20px;
+            }
+
+            .how-it-works {
+                padding: 60px 20px;
+            }
+
+            .video-sources {
+                padding: 60px 20px;
+            }
+
+            .discord-bot {
+                padding: 60px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="logo">
+            <h1><span>Stream</span> X</h1>
+        </div>
+        <a href="SR1.html" class="btn btn-secondary"><i class="fas fa-home"></i> Back to Home</a>
+    </header>
+
+    <!-- Video Demo Section -->
+    <section class="video-demo">
+        <div class="demo-content">
+            <div class="demo-text">
+                <h1>Watch videos together with friends</h1>
+                <p>No registration or download required.</p>
+                <div class="cta-buttons">
+                    <button class="btn btn-primary" onclick="createRoom()">
+                        <i class="fas fa-plus-circle"></i> New Room
+                    </button>
+                </div>
+            </div>
+            <div class="demo-video">
+                <div class="video-player">
+                    <img src="19ab082ed2043.png" alt="Demo Video" class="video-thumbnail">
+                    <div class="video-controls">
+                        <button class="play-btn"><i class="fas fa-play"></i></button>
+                        <button class="skip-btn"><i class="fas fa-forward"></i></button>
+                        <span class="time">0:55</span>
+                        <div class="progress-bar">
+                            <div class="progress" style="width: 15%;"></div>
+                        </div>
+                        <span class="duration">7:44</span>
+                        <div class="video-options">
+                            <button><i class="fas fa-closed-captioning"></i></button>
+                            <button><i class="fas fa-cog"></i></button>
+                            <button><i class="fas fa-expand"></i></button>
+                            <button><i class="fas fa-volume-up"></i></button>
+                        </div>
+                    </div>
+                    <div class="participant-thumbnails">
+                        <div class="participant">
+                            <img src="https://i.pravatar.cc/100?img=12" alt="User 1">
+                            <span>Howard</span>
+                            <span class="time-stamp">0:55</span>
+                        </div>
+                        <div class="participant">
+                            <img src="https://i.pravatar.cc/100?img=33" alt="User 2">
+                            <span>Dan</span>
+                            <span class="time-stamp">0:55</span>
+                        </div>
+                        <div class="participant">
+                            <img src="https://i.pravatar.cc/100?img=45" alt="User 3">
+                            <span>Andy</span>
+                            <span class="time-stamp">0:53</span>
+                        </div>
+                        <div class="participant">
+                            <img src="https://i.pravatar.cc/100?img=27" alt="User 4">
+                            <span>Yasmin</span>
+                            <span class="time-stamp">0:55</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-desktop"></i>
+                </div>
+                <h3>Browser</h3>
+                <p>Watch together on a virtual browser running in the cloud.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fab fa-youtube"></i>
+                </div>
+                <h3>YouTube</h3>
+                <p>Watch videos together from YouTube.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                </div>
+                <h3>Screen Sharing</h3>
+                <p>Share a browser tab or your desktop.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-file-video"></i>
+                </div>
+                <h3>File Upload</h3>
+                <p>Upload and stream your own file.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-link"></i>
+                </div>
+                <h3>URL</h3>
+                <p>Paste in a video URL for everyone to watch from.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-sync"></i>
+                </div>
+                <h3>Synchronized Play</h3>
+                <p>Starts, stops, and seeks are synchronized to everyone.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h3>Chat</h3>
+                <p>Chat with others in your room. Memes and inside jokes encouraged.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-list"></i>
+                </div>
+                <h3>Playlists</h3>
+                <p>Set up a whole list of videos to play next, and rearrange to your heart's content.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-video"></i>
+                </div>
+                <h3>Video Chat</h3>
+                <p>Jump into video chat if you'd rather be face-to-face.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works">
+        <h2>Get started!</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <h3>Make a room</h3>
+                <p>Click "New Room" to create your watch party</p>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <h3>Share link with friends</h3>
+                <p>Copy and send the room link to your friends</p>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <h3>Pick something to watch</h3>
+                <p>Choose from YouTube, upload files, or share your screen</p>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <h3>Success!</h3>
+                <p>Watch together in perfect sync</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Video Sources -->
+    <section class="video-sources">
+        <h2>Multiple ways to watch</h2>
+        <div class="sources-grid">
+            <div class="source-card">
+                <div class="source-icon">🎬</div>
+                <h3>Stream X Library</h3>
+                <p>Access our entire collection of movies and TV shows</p>
+            </div>
+            <div class="source-card">
+                <div class="source-icon">📺</div>
+                <h3>YouTube</h3>
+                <p>Paste any YouTube link to watch together</p>
+            </div>
+            <div class="source-card">
+                <div class="source-icon">🖥️</div>
+                <h3>Screen Share</h3>
+                <p>Share your screen with your friends</p>
+            </div>
+            <div class="source-card">
+                <div class="source-icon">📁</div>
+                <h3>Upload Files</h3>
+                <p>Upload your own video files to watch</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Discord Bot -->
+    <section class="discord-bot">
+        <h2><i class="fab fa-discord"></i> Add the Stream X Discord bot</h2>
+        <p>Add the Stream X Discord bot to your server to easily generate WatchParty links.</p>
+        <div class="code-box">
+            <code>/watch</code> to generate a new empty room
+        </div>
+        <div class="code-box">
+            <code>/watch video &lt;URL_HERE&gt;</code> to create a room with a video
+        </div>
+        <button class="btn btn-primary">
+            <i class="fab fa-discord"></i> Add to Discord
+        </button>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2025 Stream X. All Rights Reserved.</p>
+        <p>
+            <a href="SR1.html">Home</a>
+            <a href="#">About</a>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="#">Contact</a>
+        </p>
+    </footer>
+
+    <script>
+        function createRoom() {
+            // Redirect to room page
+            window.location.href = 'room.html';
+        }
+
+        function showJoinDialog() {
+            const roomId = prompt('Enter room ID to join:');
+            if (roomId) {
+                alert(`Joining room: ${roomId}\n\n(This is a demo - in production, this would join an actual room)`);
+            }
+        }
+
+        // Header scroll effect
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (window.scrollY > 50) {
+                header.style.background = 'rgba(15, 23, 30, 0.98)';
+            } else {
+                header.style.background = 'rgba(15, 23, 30, 0.95)';
+            }
+        });
+    </script>
+</body>
+</html>
