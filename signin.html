@@ -228,8 +228,12 @@
     <script>
         document.getElementById('signinForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            // Redirect to home page after sign in
-            window.location.href = 'index.html';
+            // Store user name if provided
+            const email = document.getElementById('email').value;
+            const userName = email.split('@')[0]; // Use email prefix as name
+            localStorage.setItem('userName', userName);
+            // Redirect to welcome page after sign in
+            window.location.href = 'welcome.html';
         });
     </script>
 </body>

@@ -309,9 +309,10 @@
                 return;
             }
             
-            // Success - redirect to home page
-            alert('Welcome to Stream X! Your free trial has started.');
-            window.location.href = 'index.html';
+            // Success - store user name and redirect to welcome page
+            const fullName = document.getElementById('fullname').value;
+            localStorage.setItem('userName', fullName);
+            window.location.href = 'welcome.html';
         });
     </script>
 </body>

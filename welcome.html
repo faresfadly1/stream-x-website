@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Stream X</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #00a8cc;
+            --primary-dark: #0088aa;
+            --primary-light: #1ad1ff;
+            --black: #0f171e;
+            --dark: #1a242f;
+            --darker: #0f171e;
+            --gray: #232f3e;
+            --white: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f171e 0%, #1a242f 50%, #0f171e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: var(--white);
+        }
+
+        /* Header */
+        header {
+            padding: 20px 50px;
+            background: rgba(26, 36, 47, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0, 168, 204, 0.2);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo h1 {
+            font-size: 48px;
+            color: var(--primary);
+        }
+
+        .logo h2 {
+            font-size: 24px;
+            color: var(--white);
+            font-weight: 700;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: 2px solid var(--primary);
+            object-fit: cover;
+        }
+
+        .logout-btn {
+            padding: 8px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--white);
+            border: 1px solid var(--primary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .logout-btn:hover {
+            background: var(--primary);
+            color: var(--black);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+        }
+
+        .welcome-container {
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .welcome-icon {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            font-size: 60px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .welcome-container h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome-container p {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 25px;
+            margin-bottom: 50px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 168, 204, 0.3);
+            border-radius: 12px;
+            padding: 25px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            background: rgba(0, 168, 204, 0.1);
+            border-color: var(--primary);
+            transform: translateY(-5px);
+        }
+
+        .feature-card i {
+            font-size: 40px;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+        }
+
+        .feature-card p {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 0;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 15px 35px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--black);
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 168, 204, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--white);
+            border: 2px solid var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(0, 168, 204, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .plan-info {
+            margin-top: 50px;
+            padding: 25px;
+            background: rgba(0, 168, 204, 0.1);
+            border: 1px solid var(--primary);
+            border-radius: 12px;
+        }
+
+        .plan-info h3 {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+            color: var(--primary);
+        }
+
+        .plan-info p {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 0;
+        }
+
+        @media (max-width: 768px) {
+            header {
+                padding: 15px 20px;
+            }
+
+            .logo h1 {
+                font-size: 36px;
+            }
+
+            .logo h2 {
+                font-size: 20px;
+            }
+
+            .welcome-container h1 {
+                font-size: 2rem;
+            }
+
+            .welcome-container p {
+                font-size: 1rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <h1>✕</h1>
+                <h2>Stream X</h2>
+            </div>
+            <div class="user-info">
+                <img src="https://i.ibb.co/8X0P4J7/user-avatar.jpg" alt="User Avatar" class="user-avatar">
+                <span id="userName">User</span>
+                <button class="logout-btn" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="welcome-container">
+            <div class="welcome-icon">
+                <i class="fas fa-check"></i>
+            </div>
+            
+            <h1>Welcome to Stream X!</h1>
+            <p>Your account is now active. You have unlimited access to thousands of movies, TV shows, and exclusive content.</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <i class="fas fa-film"></i>
+                    <h3>Unlimited Content</h3>
+                    <p>Stream thousands of movies and TV shows anytime</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-hd"></i>
+                    <h3>HD Quality</h3>
+                    <p>Watch in stunning high definition quality</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-mobile-alt"></i>
+                    <h3>Multi-Device</h3>
+                    <p>Watch on any device, anywhere, anytime</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-download"></i>
+                    <h3>Download & Go</h3>
+                    <p>Download content to watch offline</p>
+                </div>
+            </div>
+
+            <div class="cta-buttons">
+                <a href="index.html" class="btn btn-primary">
+                    <i class="fas fa-play"></i> Start Watching
+                </a>
+                <a href="membership.html" class="btn btn-secondary">
+                    <i class="fas fa-user-cog"></i> Manage Subscription
+                </a>
+            </div>
+
+            <div class="plan-info">
+                <h3><i class="fas fa-star"></i> Your Free Trial is Active</h3>
+                <p>You have 30 days of free unlimited access. Cancel anytime before the trial ends to avoid charges.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get user name from session/local storage if available
+        const userName = localStorage.getItem('userName') || 'User';
+        document.getElementById('userName').textContent = userName;
+
+        function logout() {
+            // Clear any stored user data
+            localStorage.removeItem('userName');
+            // Redirect to membership page
+            window.location.href = 'membership.html';
+        }
+
+        // Add a nice entrance animation
+        document.addEventListener('DOMContentLoaded', function() {
+            const welcomeContainer = document.querySelector('.welcome-container');
+            welcomeContainer.style.opacity = '0';
+            welcomeContainer.style.transform = 'translateY(20px)';
+            
+            setTimeout(() => {
+                welcomeContainer.style.transition = 'all 0.6s ease';
+                welcomeContainer.style.opacity = '1';
+                welcomeContainer.style.transform = 'translateY(0)';
+            }, 100);
+        });
+    </script>
+</body>
+</html>
