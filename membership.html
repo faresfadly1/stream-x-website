@@ -333,7 +333,7 @@
                         <li><i class="fas fa-check"></i> Watch on multiple devices</li>
                         <li><i class="fas fa-check"></i> Download and watch offline</li>
                     </ul>
-                    <a href="index.html" class="btn-action btn-signin">Sign In</a>
+                    <a href="signin.html" class="btn-action btn-signin">Sign In</a>
                 </div>
 
                 <div class="divider">OR</div>
@@ -356,7 +356,7 @@
                         <li><i class="fas fa-check"></i> Free delivery on thousands of items</li>
                         <li><i class="fas fa-check"></i> Access to Prime Music and Reading</li>
                     </ul>
-                    <a href="#" class="btn-action btn-trial">Start Free Trial</a>
+                    <a href="signup.html" class="btn-action btn-trial">Start Free Trial</a>
                 </div>
             </div>
 
@@ -393,14 +393,8 @@
             });
         });
 
-        // Free trial button action
-        const trialBtn = document.querySelector('.btn-trial');
-        trialBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            alert('Free trial registration coming soon!\n\nYou will be redirected to the registration page.');
-            // In production, redirect to actual registration page
-            // window.location.href = 'register.html';
-        });
+        // Buttons now link directly to signin.html and signup.html
+        // No need for alert anymore
     </script>
 </body>
 </html>
