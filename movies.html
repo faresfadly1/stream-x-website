@@ -2167,6 +2167,90 @@
     <script src="movies-data.js"></script>
     
     <script>
+        // Function to update modal with movie data (defined early)
+        function updateMovieModal(movieId) {
+            const movie = moviesDatabase[movieId];
+            if (!movie) return;
+            
+            // Update modal header
+            document.querySelector('.modal-header img').src = movie.backdrop;
+            document.querySelector('.modal-header-content h2').textContent = movie.title;
+            
+            // Update meta info
+            const metaContainer = document.querySelector('.modal-header-content .meta');
+            metaContainer.innerHTML = `
+                <span>${movie.year}</span>
+                <span>${movie.duration}</span>
+                <span>${movie.genres}</span>
+                <span>${movie.certification}</span>
+            `;
+            
+            // Update rating
+            const ratingSpan = document.querySelector('.modal-header-content .rating span');
+            ratingSpan.textContent = `${movie.rating}/10 (${Math.floor(Math.random() * 500 + 100)}K Reviews)`;
+            
+            // Update Watch Now button to open full movie
+            const watchNowBtn = document.querySelector('.modal-header-content .actions .btn-primary');
+            watchNowBtn.onclick = function() {
+                window.open(movie.fullMovieUrl, '_blank');
+            };
+            
+            // Update overview
+            document.querySelector('.modal-main p').textContent = movie.overview;
+            
+            // Update movie details
+            const detailsContainer = document.querySelector('.movie-details');
+            detailsContainer.innerHTML = `
+                <div class="detail-item">
+                    <h4>Director</h4>
+                    <p>${movie.director}</p>
+                </div>
+                <div class="detail-item">
+                    <h4>Writers</h4>
+                    <p>${movie.writers}</p>
+                </div>
+                <div class="detail-item">
+                    <h4>Stars</h4>
+                    <p>${movie.stars}</p>
+                </div>
+                <div class="detail-item">
+                    <h4>Release Date</h4>
+                    <p>${movie.releaseDate}</p>
+                </div>
+                <div class="detail-item">
+                    <h4>Budget</h4>
+                    <p>${movie.budget}</p>
+                </div>
+                <div class="detail-item">
+                    <h4>Box Office</h4>
+                    <p>${movie.boxOffice}</p>
+                </div>
+            `;
+            
+            // Update trailer
+            const trailerIframe = document.querySelector('.modal-main iframe');
+            trailerIframe.src = movie.trailer;
+            
+            // Update cast
+            const castList = document.querySelector('.cast-list');
+            castList.innerHTML = movie.cast.map(actor => `
+                <div class="cast-item">
+                    <img src="${actor.image}" alt="${actor.name}">
+                    <p>${actor.name}</p>
+                    <span>${actor.character}</span>
+                </div>
+            `).join('');
+            
+            // Update additional details
+            const detailsSection = document.querySelector('.modal-sidebar > div[style*="font-size: 14px"]');
+            detailsSection.innerHTML = `
+                <p><strong>Country:</strong> ${movie.country}</p>
+                <p><strong>Language:</strong> ${movie.language}</p>
+                <p><strong>Also Known As:</strong> ${movie.alsoKnownAs}</p>
+                <p><strong>Filming Locations:</strong> ${movie.filmingLocations}</p>
+            `;
+        }
+        
         // Preloader
         window.addEventListener('load', function() {
             const preloader = document.querySelector('.preloader');
@@ -2283,90 +2367,6 @@
                 document.body.style.overflow = 'hidden';
             });
         });
-        
-        // Function to update modal with movie data
-        function updateMovieModal(movieId) {
-            const movie = moviesDatabase[movieId];
-            if (!movie) return;
-            
-            // Update modal header
-            document.querySelector('.modal-header img').src = movie.backdrop;
-            document.querySelector('.modal-header-content h2').textContent = movie.title;
-            
-            // Update meta info
-            const metaContainer = document.querySelector('.modal-header-content .meta');
-            metaContainer.innerHTML = `
-                <span>${movie.year}</span>
-                <span>${movie.duration}</span>
-                <span>${movie.genres}</span>
-                <span>${movie.certification}</span>
-            `;
-            
-            // Update rating
-            const ratingSpan = document.querySelector('.modal-header-content .rating span');
-            ratingSpan.textContent = `${movie.rating}/10 (${Math.floor(Math.random() * 500 + 100)}K Reviews)`;
-            
-            // Update Watch Now button to open full movie
-            const watchNowBtn = document.querySelector('.modal-header-content .actions .btn-primary');
-            watchNowBtn.onclick = function() {
-                window.open(movie.fullMovieUrl, '_blank');
-            };
-            
-            // Update overview
-            document.querySelector('.modal-main p').textContent = movie.overview;
-            
-            // Update movie details
-            const detailsContainer = document.querySelector('.movie-details');
-            detailsContainer.innerHTML = `
-                <div class="detail-item">
-                    <h4>Director</h4>
-                    <p>${movie.director}</p>
-                </div>
-                <div class="detail-item">
-                    <h4>Writers</h4>
-                    <p>${movie.writers}</p>
-                </div>
-                <div class="detail-item">
-                    <h4>Stars</h4>
-                    <p>${movie.stars}</p>
-                </div>
-                <div class="detail-item">
-                    <h4>Release Date</h4>
-                    <p>${movie.releaseDate}</p>
-                </div>
-                <div class="detail-item">
-                    <h4>Budget</h4>
-                    <p>${movie.budget}</p>
-                </div>
-                <div class="detail-item">
-                    <h4>Box Office</h4>
-                    <p>${movie.boxOffice}</p>
-                </div>
-            `;
-            
-            // Update trailer
-            const trailerIframe = document.querySelector('.modal-main iframe');
-            trailerIframe.src = movie.trailer;
-            
-            // Update cast
-            const castList = document.querySelector('.cast-list');
-            castList.innerHTML = movie.cast.map(actor => `
-                <div class="cast-item">
-                    <img src="${actor.image}" alt="${actor.name}">
-                    <p>${actor.name}</p>
-                    <span>${actor.character}</span>
-                </div>
-            `).join('');
-            
-            // Update additional details
-            const detailsSection = document.querySelector('.modal-sidebar > div[style*="font-size: 14px"]');
-            detailsSection.innerHTML = `
-                <p><strong>Country:</strong> ${movie.country}</p>
-                <p><strong>Language:</strong> ${movie.language}</p>
-                <p><strong>Also Known As:</strong> ${movie.alsoKnownAs}</p>
-                <p><strong>Filming Locations:</strong> ${movie.filmingLocations}</p>
-            `;
-        }
 
         // Close modal
         const modalClose = document.querySelector('.modal-close');
