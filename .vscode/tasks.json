@@ -18,6 +18,18 @@
             "type": "shell",
             "command": "open https://faresfadly1.github.io/stream-x-website/movies.html",
             "problemMatcher": []
+        },
+        {
+            "label": "🔴 Start Live Server (Local Preview)",
+            "type": "shell",
+            "command": "echo 'Right-click on movies.html and select \"Open with Live Server\"'",
+            "problemMatcher": []
+        },
+        {
+            "label": "🌐 Open Local Preview",
+            "type": "shell",
+            "command": "open http://localhost:5500/movies.html",
+            "problemMatcher": []
         }
     ],
     "inputs": [
