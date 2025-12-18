@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Watch Room - Stream X</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -836,6 +837,121 @@
     </div>
 
     <script>
+        // ============ Room ID Management ============
+        function generateRoomId() {
+            return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        }
+
+        function getRoomIdFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('room');
+        }
+
+        function setRoomIdInURL(roomId) {
+            const url = new URL(window.location);
+            url.searchParams.set('room', roomId);
+            window.history.replaceState({}, '', url);
+        }
+
+        // Get or create room ID
+        let roomId = getRoomIdFromURL();
+        if (!roomId) {
+            roomId = generateRoomId();
+            setRoomIdInURL(roomId);
+        }
+
+        // ============ Socket.IO Connection ============
+        const socket = io('http://localhost:3000');
+        const username = 'User' + Math.floor(Math.random() * 1000);
+        let isUpdatingFromRemote = false;
+
+        // Join room on connection
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            socket.emit('join-room', roomId, username);
+        });
+
+        // Receive room state when joining
+        socket.on('room-state', (state) => {
+            console.log('Room state received:', state);
+            updateUsersList(state.users);
+            
+            // Load current video if exists
+            if (state.currentVideo) {
+                isUpdatingFromRemote = true;
+                loadVideo(state.currentVideo, false);
+                isUpdatingFromRemote = false;
+            }
+        });
+
+        // Handle new user joining
+        socket.on('user-joined', (user) => {
+            console.log('User joined:', user);
+            addChatMessage('System', `${user.username} joined the room`, true);
+            // Request updated user list
+            socket.emit('get-users', roomId);
+        });
+
+        // Handle user leaving
+        socket.on('user-left', (user) => {
+            console.log('User left:', user);
+            addChatMessage('System', `${user.username} left the room`, true);
+        });
+
+        // Handle video changes from other users
+        socket.on('video-changed', (videoUrl) => {
+            console.log('Video changed by another user:', videoUrl);
+            isUpdatingFromRemote = true;
+            loadVideo(videoUrl, false);
+            isUpdatingFromRemote = false;
+        });
+
+        // Handle chat messages
+        socket.on('chat-message', (data) => {
+            addChatMessage(data.username, data.message, false);
+        });
+
+        // ============ UI Functions ============
+        function updateUsersList(users) {
+            const peopleTab = document.getElementById('peopleTab');
+            peopleTab.innerHTML = '';
+            
+            users.forEach(user => {
+                const userItem = document.createElement('div');
+                userItem.className = 'person-item';
+                userItem.innerHTML = `
+                    <div class="person-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="person-info">
+                        <div class="person-name">${user.username}${user.username === username ? ' (You)' : ''}</div>
+                        <div class="person-status">Online</div>
+                    </div>
+                `;
+                peopleTab.appendChild(userItem);
+            });
+            
+            // Update badge count
+            document.querySelector('.tab .badge').textContent = users.length;
+        }
+
+        function addChatMessage(sender, message, isSystem = false) {
+            const chatMessages = document.querySelector('.chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = `
+                padding: 10px;
+                margin-bottom: 10px;
+                background: ${isSystem ? 'rgba(255, 167, 36, 0.1)' : 'rgba(255, 255, 255, 0.05)'};
+                border-radius: 8px;
+            `;
+            messageDiv.innerHTML = `
+                <div style="font-size: 12px; color: ${isSystem ? 'var(--gold)' : 'var(--primary)'}; font-weight: 600; margin-bottom: 4px;">${sender}</div>
+                <div style="font-size: 14px; color: var(--white);">${message}</div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
         function switchTab(tabName) {
             // Hide all tabs
             document.getElementById('peopleTab').style.display = 'none';
@@ -881,13 +997,13 @@
         const chatInput = document.querySelector('.chat-input');
         chatInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && this.value.trim()) {
-                // In production, this would send the message
-                console.log('Message sent:', this.value);
+                const message = this.value.trim();
+                socket.emit('chat-message', roomId, message, username);
                 this.value = '';
             }
         });
 
-        // Video URL Input Handler
+        // ============ Video Player Functions ============
         const urlInput = document.getElementById('urlInput');
         const videoFrame = document.getElementById('videoFrame');
         const emptyState = document.getElementById('emptyState');
@@ -903,7 +1019,7 @@
         }
 
         // Function to load video
-        function loadVideo(url) {
+        function loadVideo(url, emitToOthers = true) {
             const videoId = getYouTubeVideoId(url);
             if (videoId) {
                 // Reset error state
@@ -914,6 +1030,12 @@
                 videoFrame.src = embedUrl;
                 videoFrame.style.display = 'block';
                 emptyState.style.display = 'none';
+                urlInput.value = url;
+                
+                // Emit to other users if this is a local change
+                if (emitToOthers && !isUpdatingFromRemote) {
+                    socket.emit('change-video', roomId, url);
+                }
                 
                 // Listen for iframe load errors
                 videoFrame.onerror = function() {
@@ -948,8 +1070,7 @@
         document.querySelectorAll('.suggestion-item').forEach(item => {
             item.addEventListener('click', function() {
                 const url = this.getAttribute('data-url');
-                urlInput.value = url;
-                loadVideo(url);
+                loadVideo(url, true);
                 videoSuggestions.classList.remove('active');
             });
         });
@@ -957,7 +1078,7 @@
         // Handle Enter key in URL input
         urlInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && this.value.trim()) {
-                loadVideo(this.value.trim());
+                loadVideo(this.value.trim(), true);
                 videoSuggestions.classList.remove('active');
             }
         });
@@ -971,16 +1092,10 @@
             urlInput.value = '';
         });
 
-        // Auto-load demo video on page load (optional - remove if you don't want this)
-        window.addEventListener('load', function() {
-            // Uncomment the line below to auto-load the video
-            // loadVideo('https://www.youtube.com/watch?v=_OcHuM-GrQQ');
-        });
-
         // Share button functionality
         const shareBtn = document.getElementById('shareBtn');
         shareBtn.addEventListener('click', function() {
-            // Get current page URL
+            // Get current page URL with room ID
             const pageUrl = window.location.href;
             
             // Copy to clipboard
@@ -993,7 +1108,7 @@
                 
                 // Create a temporary notification
                 const notification = document.createElement('div');
-                notification.textContent = 'Link copied! Share with your friends.';
+                notification.textContent = 'Room link copied! Share it with your friends.';
                 notification.style.cssText = `
                     position: fixed;
                     top: 80px;
@@ -1004,7 +1119,7 @@
                     border-radius: 8px;
                     font-weight: 600;
                     z-index: 10000;
-                    animation: slideIn 0.3s ease;
+                    box-shadow: 0 4px 12px rgba(0, 217, 95, 0.3);
                 `;
                 document.body.appendChild(notification);
                 
@@ -1021,6 +1136,10 @@
                 console.error('Failed to copy:', err);
             });
         });
+
+        // Display room ID in console
+        console.log('Room ID:', roomId);
+        console.log('Share this URL with friends:', window.location.href);
     </script>
 </body>
 </html>
