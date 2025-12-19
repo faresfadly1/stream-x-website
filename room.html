@@ -861,7 +861,11 @@
         }
 
         // ============ Socket.IO Connection ============
-        const socket = io('http://localhost:3000');
+        // Auto-detect server URL based on environment
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const serverUrl = isLocalhost ? 'http://localhost:3000' : 'https://stream-x-backend.onrender.com';
+        
+        const socket = io(serverUrl);
         const username = 'User' + Math.floor(Math.random() * 1000);
         let isUpdatingFromRemote = false;
 

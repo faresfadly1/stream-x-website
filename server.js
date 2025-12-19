@@ -7,8 +7,9 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
+        origin: ["http://localhost:3000", "https://faresfadly1.github.io"],
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
