@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Watch Room - Stream X</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -72,6 +73,14 @@
             align-items: center;
             gap: 15px;
         }
+
+        .connection-status {
+            color: var(--light-gray);
+            font-size: 12px;
+        }
+
+        .connection-status.connected { color: var(--green); }
+        .connection-status.error { color: #ff6b6b; }
 
         .btn {
             padding: 8px 20px;
@@ -649,6 +658,7 @@
             <h1>WATCH <span>TOGETHER</span></h1>
         </div>
         <div class="header-actions">
+            <span class="connection-status" id="connectionStatus" role="status">Connecting…</span>
             <button class="btn btn-primary">
                 <i class="fab fa-discord"></i>
             </button>
@@ -703,16 +713,9 @@
                 <button class="close-btn">
                     <i class="fas fa-times"></i>
                 </button>
-                <div class="source-buttons">
-                    <button class="source-btn screenshare">
-                        <i class="fas fa-desktop"></i> Screenshare
-                    </button>
-                    <button class="source-btn vbrowser">
-                        <i class="fas fa-globe"></i> VBrowser
-                    </button>
-                    <button class="source-btn file">
-                        <i class="fas fa-file"></i> File
-                    </button>
+                <div class="source-buttons" aria-label="Supported sources">
+                    <span class="source-btn screenshare"><i class="fab fa-youtube"></i> YouTube</span>
+                    <span class="source-btn vbrowser"><i class="fas fa-film"></i> Direct video URL</span>
                 </div>
             </div>
 
@@ -729,7 +732,7 @@
                         <p>Please try selecting one of the suggested videos above, or paste a different YouTube URL.</p>
                     </div>
                 </div>
-                <iframe id="videoFrame" style="display: none; width: 100%; height: 100%; border: none;"></iframe>
+                <div id="videoFrame" style="display: none; width: 100%; height: 100%;"></div>
             </div>
         </div>
 
@@ -739,7 +742,7 @@
             <div class="sidebar-header">
                 <div class="room-info">
                     <i class="fas fa-user"></i>
-                    <span class="room-name">Malicious Girls</span>
+                    <span class="room-name" id="roomName">Watch room</span>
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button class="btn btn-secondary" style="padding: 6px 12px;">
@@ -836,8 +839,8 @@
         </button>
     </div>
 
-    <script>
-        // ============ Room ID Management ============
+    <script type="text/plain" id="legacyRoomScript">
+        // Legacy room script retained only for source-history reference.
         function generateRoomId() {
             return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         }
@@ -1144,6 +1147,304 @@
         // Display room ID in console
         console.log('Room ID:', roomId);
         console.log('Share this URL with friends:', window.location.href);
+    </script>
+    <script>
+        const SERVER_URL = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+            ? 'http://localhost:3000'
+            : 'https://stream-x-backend.onrender.com';
+        const state = { roomId: null, player: null, media: null, ready: false, suppressUntil: 0, lastTime: 0, lastVolume: 100 };
+        const videoFrame = document.getElementById('videoFrame');
+        const emptyState = document.getElementById('emptyState');
+        const errorMessage = document.getElementById('errorMessage');
+        const urlInput = document.getElementById('urlInput');
+        const videoSuggestions = document.getElementById('videoSuggestions');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const usernameKey = 'stream-x-display-name';
+        const savedName = localStorage.getItem(usernameKey);
+        const username = savedName || `Guest ${Math.floor(Math.random() * 900 + 100)}`;
+        if (!savedName) localStorage.setItem(usernameKey, username);
+
+        function createRoomId() {
+            return crypto.getRandomValues(new Uint32Array(3)).join('').slice(0, 18);
+        }
+
+        function initialiseRoom() {
+            const params = new URLSearchParams(window.location.search);
+            state.roomId = params.get('room');
+            if (!state.roomId) {
+                state.roomId = createRoomId();
+                params.set('room', state.roomId);
+                history.replaceState({}, '', `${location.pathname}?${params}`);
+            }
+            document.getElementById('roomName').textContent = `Room ${state.roomId.slice(0, 8)}`;
+        }
+
+        function setConnectionStatus(text, kind = '') {
+            connectionStatus.textContent = text;
+            connectionStatus.className = `connection-status ${kind}`;
+        }
+
+        const socket = io(SERVER_URL, { transports: ['websocket', 'polling'], reconnection: true });
+        socket.on('connect', () => {
+            setConnectionStatus('Live', 'connected');
+            socket.emit('join-room', state.roomId, username);
+        });
+        socket.on('disconnect', () => setConnectionStatus('Reconnecting…'));
+        socket.on('connect_error', () => setConnectionStatus('Live service unavailable', 'error'));
+        socket.on('room-error', (message) => showNotice(message, true));
+        socket.on('notice', (message) => addChatMessage('Room', message, true));
+        socket.on('chat-message', (message) => addChatMessage(message.username, message.message));
+        socket.on('room-state', (room) => {
+            updateUsersList(room.users || []);
+            if (room.media) loadMedia(room.media, room.playback);
+            else showEmptyState();
+        });
+        socket.on('media-change', ({ media, playback }) => loadMedia(media, playback));
+        socket.on('playback-action', ({ playback }) => applyPlayback(playback));
+
+        window.onYouTubeIframeAPIReady = () => { state.youtubeReady = true; };
+
+        function getYouTubeVideoId(value) {
+            try {
+                const url = new URL(value.trim());
+                if (url.hostname === 'youtu.be') return url.pathname.slice(1).match(/^[\w-]{11}$/)?.[0] || null;
+                if (url.hostname.endsWith('youtube.com')) return (url.searchParams.get('v') || url.pathname.split('/').pop()).match(/^[\w-]{11}$/)?.[0] || null;
+            } catch (_) { /* handled below */ }
+            return null;
+        }
+
+        function getMediaFromUrl(value) {
+            const youtubeId = getYouTubeVideoId(value);
+            if (youtubeId) return { type: 'youtube', videoId: youtubeId };
+            try {
+                const url = new URL(value.trim());
+                if (/\.(mp4|webm|ogg|m3u8)(?:$|[?#])/i.test(url.pathname + url.search)) return { type: 'video', url: url.href };
+            } catch (_) { /* handled below */ }
+            return null;
+        }
+
+        function visibleMediaUrl(media) {
+            return media.type === 'youtube' ? `https://www.youtube.com/watch?v=${media.videoId}` : media.url;
+        }
+
+        function sameMedia(first, second) {
+            return first && second && first.type === second.type && (first.videoId || first.url) === (second.videoId || second.url);
+        }
+
+        function targetTime(playback) {
+            if (!playback) return 0;
+            return Math.max(0, playback.currentTime + (playback.playing ? (Date.now() - playback.updatedAt) / 1000 : 0));
+        }
+
+        function resetPlayer() {
+            if (state.player?.destroy) state.player.destroy();
+            state.player = null;
+            state.ready = false;
+            videoFrame.innerHTML = '';
+        }
+
+        function loadMedia(media, playback) {
+            if (!media) return showEmptyState();
+            urlInput.value = visibleMediaUrl(media);
+            emptyState.style.display = 'none';
+            videoFrame.style.display = 'block';
+            errorMessage.style.display = 'none';
+            if (sameMedia(state.media, media) && state.player) return applyPlayback(playback);
+
+            resetPlayer();
+            state.media = media;
+            if (media.type === 'youtube') {
+                videoFrame.innerHTML = '<div id="youtubePlayer"></div>';
+                const createYouTubePlayer = () => {
+                    state.player = new YT.Player('youtubePlayer', {
+                        videoId: media.videoId,
+                        playerVars: { autoplay: 0, playsinline: 1, rel: 0, enablejsapi: 1 },
+                        events: {
+                            onReady: () => { state.ready = true; applyPlayback(playback); },
+                            onStateChange: ({ data }) => onYouTubeState(data),
+                            onError: () => showMediaError('This YouTube video cannot be played in an embedded room.')
+                        }
+                    });
+                };
+                if (window.YT?.Player) createYouTubePlayer();
+                else {
+                    const waitForApi = setInterval(() => {
+                        if (window.YT?.Player) { clearInterval(waitForApi); createYouTubePlayer(); }
+                    }, 100);
+                }
+            } else {
+                const video = document.createElement('video');
+                video.src = media.url;
+                video.controls = true;
+                video.playsInline = true;
+                video.style.cssText = 'width:100%;height:100%;background:#000;';
+                video.addEventListener('loadedmetadata', () => { state.ready = true; applyPlayback(playback); });
+                video.addEventListener('play', () => emitPlayback('play'));
+                video.addEventListener('pause', () => emitPlayback('pause'));
+                video.addEventListener('seeked', () => emitPlayback('seek'));
+                video.addEventListener('volumechange', () => emitPlayback('volume'));
+                video.addEventListener('error', () => showMediaError('This direct video URL could not be played.'));
+                videoFrame.appendChild(video);
+                state.player = video;
+            }
+        }
+
+        function onYouTubeState(code) {
+            if (Date.now() < state.suppressUntil || !state.ready) return;
+            if (code === YT.PlayerState.PLAYING) emitPlayback('play');
+            if (code === YT.PlayerState.PAUSED || code === YT.PlayerState.ENDED) emitPlayback('pause');
+        }
+
+        function playerTime() {
+            if (!state.player) return 0;
+            return state.media?.type === 'youtube'
+                ? Number(state.player.getCurrentTime()) || 0
+                : Number(state.player.currentTime) || 0;
+        }
+
+        function playerVolume() {
+            return state.media?.type === 'youtube' ? state.player.getVolume() : Math.round(state.player.volume * 100);
+        }
+
+        function isPlaying() {
+            return state.media?.type === 'youtube'
+                ? state.player.getPlayerState() === YT.PlayerState.PLAYING
+                : !state.player.paused;
+        }
+
+        function emitPlayback(type) {
+            if (!state.ready || Date.now() < state.suppressUntil) return;
+            socket.emit('playback-action', { type, currentTime: playerTime(), volume: playerVolume() });
+        }
+
+        function applyPlayback(playback) {
+            if (!state.ready || !playback || !state.player) return;
+            state.suppressUntil = Date.now() + 900;
+            const time = targetTime(playback);
+            const current = playerTime();
+            if (Math.abs(current - time) > 0.7) state.player.seekTo ? state.player.seekTo(time, true) : (state.player.currentTime = time);
+            if (state.media.type === 'youtube') {
+                state.player.setVolume(playback.volume);
+                if (playback.playing) state.player.playVideo(); else state.player.pauseVideo();
+            } else {
+                state.player.volume = playback.volume / 100;
+                if (playback.playing) state.player.play().catch(() => showNotice('Press play once to enable audio in this browser.')); else state.player.pause();
+            }
+            state.lastTime = time;
+            state.lastVolume = playback.volume;
+        }
+
+        function showEmptyState() {
+            resetPlayer();
+            state.media = null;
+            videoFrame.style.display = 'none';
+            emptyState.style.display = 'flex';
+            errorMessage.style.display = 'none';
+            urlInput.value = '';
+        }
+
+        function showMediaError(message) {
+            resetPlayer();
+            videoFrame.style.display = 'none';
+            emptyState.style.display = 'flex';
+            errorMessage.style.display = 'block';
+            errorMessage.querySelector('p').textContent = message;
+        }
+
+        function updateUsersList(users) {
+            const peopleTab = document.getElementById('peopleTab');
+            peopleTab.textContent = '';
+            users.forEach((user) => {
+                const item = document.createElement('div');
+                item.className = 'person-item';
+                item.innerHTML = '<div class="person-avatar"><i class="fas fa-user"></i></div>';
+                const info = document.createElement('div');
+                info.className = 'person-info';
+                info.innerHTML = `<div class="person-name"></div><div class="person-status">Online</div>`;
+                info.querySelector('.person-name').textContent = `${user.username}${user.id === socket.id ? ' (You)' : ''}`;
+                item.appendChild(info);
+                peopleTab.appendChild(item);
+            });
+            document.querySelector('.tab .badge').textContent = users.length;
+        }
+
+        function addChatMessage(sender, message, isSystem = false) {
+            const feed = document.querySelector('.chat-messages');
+            const item = document.createElement('div');
+            item.style.cssText = `padding:10px;margin-bottom:10px;background:${isSystem ? 'rgba(255,167,36,.1)' : 'rgba(255,255,255,.05)'};border-radius:8px;`;
+            const author = document.createElement('div');
+            author.style.cssText = `font-size:12px;color:${isSystem ? 'var(--gold)' : 'var(--primary)'};font-weight:600;margin-bottom:4px;`;
+            author.textContent = sender;
+            const text = document.createElement('div');
+            text.style.fontSize = '14px';
+            text.textContent = message;
+            item.append(author, text);
+            feed.appendChild(item);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function showNotice(message, isError = false) {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `position:fixed;top:80px;right:20px;background:${isError ? '#c94b4b' : 'var(--green)'};color:var(--black);padding:12px 20px;border-radius:8px;font-weight:600;z-index:10000;`;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3500);
+        }
+
+        function chooseMedia(value) {
+            const media = getMediaFromUrl(value);
+            if (!media) return showNotice('Paste a YouTube link or a direct .mp4, .webm, .ogg, or .m3u8 URL.', true);
+            socket.emit('media-change', media);
+            videoSuggestions.classList.remove('active');
+        }
+
+        urlInput.addEventListener('focus', () => videoSuggestions.classList.add('active'));
+        document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
+        urlInput.addEventListener('keydown', (event) => { if (event.key === 'Enter' && urlInput.value.trim()) chooseMedia(urlInput.value); });
+        document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
+        document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
+        document.querySelector('.chat-input').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && event.currentTarget.value.trim()) {
+                socket.emit('chat-message', event.currentTarget.value);
+                event.currentTarget.value = '';
+            }
+        });
+        document.getElementById('shareBtn').addEventListener('click', async () => {
+            const link = location.href;
+            try {
+                if (navigator.share) await navigator.share({ title: 'Stream X Watch Together', url: link });
+                else { await navigator.clipboard.writeText(link); showNotice('Room link copied — send it to your friend.'); }
+            } catch (_) { /* Share sheet was dismissed; no error needs to be shown. */ }
+        });
+        document.querySelector('.header-actions .fa-plus').closest('button').addEventListener('click', () => {
+            location.href = `${location.pathname}?room=${createRoomId()}`;
+        });
+
+        document.querySelector('.arrow-btn').addEventListener('click', function () {
+            document.querySelector('.sidebar').classList.toggle('hidden');
+            this.classList.toggle('moved');
+            this.querySelector('i').classList.toggle('fa-chevron-right');
+            this.querySelector('i').classList.toggle('fa-chevron-left');
+        });
+
+        window.switchTab = (name) => {
+            ['people', 'playlist', 'settings'].forEach((tab, index) => {
+                document.getElementById(`${tab}Tab`).style.display = tab === name ? 'block' : 'none';
+                document.querySelectorAll('.tab')[index].classList.toggle('active', tab === name);
+            });
+        };
+
+        setInterval(() => {
+            if (!state.ready || Date.now() < state.suppressUntil || !isPlaying()) return;
+            const now = playerTime();
+            if (Math.abs(now - state.lastTime - 1) > 1.2) emitPlayback('seek');
+            state.lastTime = now;
+            const volume = playerVolume();
+            if (volume !== state.lastVolume) { state.lastVolume = volume; emitPlayback('volume'); }
+        }, 1000);
+        setInterval(() => socket.connected && socket.emit('request-sync'), 8000);
+
+        initialiseRoom();
     </script>
 </body>
 </html>
