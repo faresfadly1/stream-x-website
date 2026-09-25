@@ -24,6 +24,7 @@ const TMDB_READ_ACCESS_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN || '';
 const tmdbSearchCache = new Map();
 const openCatalogueCache = new Map();
 const wikipediaSearchCache = new Map();
+const archiveMovieSearchCache = new Map();
 
 // These are full-length films in the public domain. Keeping an allow-list avoids
 // presenting unverified uploads as if they were licensed for streaming.
@@ -91,6 +92,66 @@ function publicMovieResult(movie) {
         url: movieStreamUrl(movie),
         actionLabel: 'Full movie · watch together'
     };
+}
+
+function archiveMovieStreamUrl(identifier, fileName) {
+    return `https://archive.org/download/${encodeURIComponent(identifier)}/${encodeURIComponent(fileName)}`;
+}
+
+// Search an established public-domain collection and resolve an actual video
+// file before it is offered to the shared player. Catalogue records without a
+// playable file are intentionally discarded.
+async function searchArchivePublicDomainMovies(query) {
+    if (query.length < 2) return [];
+    const cacheKey = query.toLowerCase();
+    const cached = archiveMovieSearchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.results;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+        const safeTitle = query.replace(/["\\]/g, '\\$&');
+        const searchUrl = new URL('https://archive.org/advancedsearch.php');
+        searchUrl.search = new URLSearchParams({
+            q: `collection:feature_films AND mediatype:movies AND licenseurl:*publicdomain* AND title:("${safeTitle}")`,
+            'fl[]': 'identifier,title,year,description',
+            rows: '18', page: '1', output: 'json'
+        });
+        const searchResponse = await fetch(searchUrl, { signal: controller.signal });
+        if (!searchResponse.ok) return [];
+        const payload = await searchResponse.json();
+        const candidates = (payload.response?.docs || []).slice(0, 12);
+        const resolved = await Promise.all(candidates.map(async (item) => {
+            try {
+                const metadataResponse = await fetch(`https://archive.org/metadata/${encodeURIComponent(item.identifier)}`, { signal: controller.signal });
+                if (!metadataResponse.ok) return null;
+                const metadata = await metadataResponse.json();
+                const videoFile = (metadata.files || []).find((file) =>
+                    /\.(?:mp4|m4v|webm)$/i.test(file.name || '') && !file.private
+                );
+                if (!videoFile) return null;
+                return {
+                    id: `archive-${item.identifier}`,
+                    kind: 'playable',
+                    title: item.title || item.identifier,
+                    year: String(item.year || '').slice(0, 4),
+                    description: plainSnippet(item.description) || 'Public-domain full movie',
+                    poster: `https://archive.org/services/img/${encodeURIComponent(item.identifier)}`,
+                    url: archiveMovieStreamUrl(item.identifier, videoFile.name),
+                    actionLabel: 'Full public-domain movie · watch together'
+                };
+            } catch (_) {
+                return null;
+            }
+        }));
+        const results = resolved.filter(Boolean).slice(0, 8);
+        archiveMovieSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 10 * 60 * 1000 });
+        return results;
+    } catch (_) {
+        return [];
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 async function searchTmdbMovies(query) {
@@ -267,7 +328,8 @@ app.get('/api/legal-movies', async (request, response) => {
         .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
         .map(publicMovieResult);
-    const [tmdbResults, openCatalogueResults, wikipediaResults] = await Promise.all([
+    const [archivePublicResults, tmdbResults, openCatalogueResults, wikipediaResults] = await Promise.all([
+        searchArchivePublicDomainMovies(lookupQuery),
         searchTmdbMovies(lookupQuery),
         searchOpenFilmCatalogue(lookupQuery),
         searchWikipediaFilms(lookupQuery)
@@ -277,6 +339,12 @@ app.get('/api/legal-movies', async (request, response) => {
     // not get cluttered with actor, award, or soundtrack pages.
     const fallbackResults = tmdbResults.length || openCatalogueResults.length ? [] : wikipediaResults;
     const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
+    const archiveResults = archivePublicResults.filter((movie) => {
+        const key = normaliseSearch(movie.title);
+        if (knownTitles.has(key)) return false;
+        knownTitles.add(key);
+        return true;
+    });
     const catalogueResults = [...tmdbResults, ...openCatalogueResults, ...fallbackResults].filter((movie) => {
         const key = normaliseSearch(movie.title);
         if (knownTitles.has(key)) return false;
@@ -284,7 +352,7 @@ app.get('/api/legal-movies', async (request, response) => {
         return true;
     });
     response.json({
-        results: [...publicResults, ...catalogueResults],
+        results: [...publicResults, ...archiveResults, ...catalogueResults],
         catalogueEnabled: true,
         message: 'Searches the free open film catalogue. Full room playback is limited to public-domain or licensed video.'
     });
