@@ -381,16 +381,10 @@ app.get('/api/legal-movies', async (request, response) => {
         .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
         .map(publicMovieResult);
-    const [archivePublicResults, tmdbResults, openCatalogueResults, wikipediaResults] = await Promise.all([
-        searchArchivePublicDomainMovies(lookupQuery),
-        searchTmdbMovies(lookupQuery),
-        searchOpenFilmCatalogue(lookupQuery),
-        searchWikipediaFilms(lookupQuery)
-    ]);
-    // Wikipedia is a tolerant fallback for aliases and spelling variations.
-    // Prefer the stricter catalogue whenever it found a film so a query does
-    // not get cluttered with actor, award, or soundtrack pages.
-    const fallbackResults = tmdbResults.length || openCatalogueResults.length ? [] : wikipediaResults;
+    // The Watch Together picker must never send someone to a trailer or a
+    // catalogue page. Only resolve public-domain records after confirming an
+    // actual video file exists, so every listed result is playable in-room.
+    const archivePublicResults = await searchArchivePublicDomainMovies(lookupQuery);
     const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
     const archiveResults = archivePublicResults.filter((movie) => {
         const key = normaliseSearch(movie.title);
@@ -398,16 +392,9 @@ app.get('/api/legal-movies', async (request, response) => {
         knownTitles.add(key);
         return true;
     });
-    const catalogueResults = [...tmdbResults, ...openCatalogueResults, ...fallbackResults].filter((movie) => {
-        const key = normaliseSearch(movie.title);
-        if (knownTitles.has(key)) return false;
-        knownTitles.add(key);
-        return true;
-    });
     response.json({
-        results: [...publicResults, ...archiveResults, ...catalogueResults],
-        catalogueEnabled: true,
-        message: 'Searches the free open film catalogue. Full room playback is limited to public-domain or licensed video.'
+        results: [...publicResults, ...archiveResults],
+        message: 'Every result is a legal full movie that can play in this room.'
     });
 });
 app.use(express.static(path.join(__dirname)));
