@@ -6,7 +6,6 @@
     <title>Watch Room - Stream X</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-    <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -685,16 +684,12 @@
             <!-- Control Bar -->
             <div class="control-bar">
                 <div class="url-input-wrapper">
-                    <input type="text" class="url-input" id="urlInput" placeholder="Search movies or paste a licensed video link" autocomplete="off">
+                    <input type="text" class="url-input" id="urlInput" placeholder="Search free legal full movies" autocomplete="off">
                     <div class="video-suggestions" id="videoSuggestions" aria-label="Legal movie search results"></div>
                 </div>
                 <button class="close-btn">
                     <i class="fas fa-times"></i>
                 </button>
-                <div class="source-buttons" aria-label="Supported sources">
-                    <span class="source-btn screenshare"><i class="fab fa-youtube"></i> YouTube</span>
-                    <span class="source-btn vbrowser"><i class="fas fa-film"></i> Direct video URL</span>
-                </div>
             </div>
 
             <!-- Video Player -->
@@ -707,7 +702,7 @@
                     <div class="error-message" id="errorMessage" style="display: none;">
                         <h3><i class="fas fa-exclamation-triangle"></i> Video Cannot Be Embedded</h3>
                         <p>This video's owner has disabled embedding.</p>
-                        <p>Please try selecting one of the suggested videos above, or paste a different YouTube URL.</p>
+                        <p>Please choose another full-movie result from the search list.</p>
                     </div>
                 </div>
                 <div id="videoFrame" style="display: none; width: 100%; height: 100%;"></div>
@@ -1546,7 +1541,7 @@
                     : 'This result is a catalogue match, not a video source that can be played in the room';
                 result.addEventListener('click', () => {
                     if (movie.kind === 'playable') return chooseMedia(movie.url, movie.title);
-                    showNotice(`${movie.title} is a catalogue match, not a licensed video file for the shared player. To watch together, choose a Full movie result or paste a direct video link you are licensed to share.`, true);
+                    showNotice(`${movie.title} is a catalogue match, not a legal full-movie source for this room. Choose a Full movie result instead.`, true);
                 });
                 videoSuggestions.appendChild(result);
             });
@@ -1563,13 +1558,13 @@
                 movieResults = data.results || [];
                 showMovieResults(movieResults);
             } catch (_) {
-                if (requestId === searchRequest) showNotice('Movie search is temporarily unavailable. Paste a licensed video link instead.', true);
+                if (requestId === searchRequest) showNotice('Movie search is temporarily unavailable. Please try again.', true);
             }
         }
 
         function chooseMedia(value, title = '') {
             const media = getMediaFromUrl(value);
-            if (!media) return showNotice('Choose a full movie from the results or paste a licensed video link.', true);
+            if (!media) return showNotice('Choose a full movie from the search results.', true);
             socket.emit('media-change', media);
             videoSuggestions.classList.remove('active');
             if (title) showNotice(`Playing ${title} for everyone in the room.`);
@@ -1579,18 +1574,12 @@
         urlInput.addEventListener('input', () => {
             const value = urlInput.value.trim();
             clearTimeout(searchTimer);
-            if (getMediaFromUrl(value)) {
-                searchRequest += 1;
-                videoSuggestions.classList.remove('active');
-            } else {
-                searchTimer = setTimeout(() => searchFullMovies(value), 200);
-            }
+            searchTimer = setTimeout(() => searchFullMovies(value), 200);
         });
         document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
         urlInput.addEventListener('keydown', async (event) => {
             if (event.key !== 'Enter' || !urlInput.value.trim()) return;
             const value = urlInput.value.trim();
-            if (getMediaFromUrl(value)) return chooseMedia(value);
             // Prevent the debounced input search from invalidating this Enter
             // search while it is awaiting its response.
             clearTimeout(searchTimer);
@@ -1600,7 +1589,7 @@
             else if (movieResults.length) {
                 videoSuggestions.classList.add('active');
                 showNotice('Choose the matching title from the legal results.');
-            } else showNotice('No legal match found. Try the title without extra words, or paste a licensed video link instead.', true);
+            } else showNotice('No playable legal match found. Try the title without extra words.', true);
         });
         document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
