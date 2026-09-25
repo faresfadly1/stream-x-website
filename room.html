@@ -1541,6 +1541,10 @@
                     : 'This result is a catalogue match, not a video source that can be played in the room';
                 result.addEventListener('click', () => {
                     if (movie.kind === 'playable') return chooseMedia(movie.url, movie.title);
+                    if (movie.tmdbId) {
+                        location.href = `movie-details.html?tmdb=${encodeURIComponent(movie.tmdbId)}`;
+                        return;
+                    }
                     showNotice(`${movie.title} is a catalogue match, not a legal full-movie source for this room. Choose a Full movie result instead.`, true);
                 });
                 videoSuggestions.appendChild(result);

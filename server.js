@@ -173,6 +173,7 @@ async function searchTmdbMovies(query) {
         const payload = await tmdbResponse.json();
         const results = (payload.results || []).slice(0, 12).map((movie) => ({
             id: `tmdb-${movie.id}`,
+            tmdbId: movie.id,
             kind: 'legal-provider',
             title: movie.title || movie.original_title || 'Untitled film',
             year: (movie.release_date || '').slice(0, 4),
@@ -185,6 +186,52 @@ async function searchTmdbMovies(query) {
         return results;
     } catch (_) {
         return [];
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function fetchTmdbMovieDetails(movieId) {
+    if (!TMDB_READ_ACCESS_TOKEN || !Number.isInteger(movieId) || movieId <= 0) return null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+        const url = new URL(`https://api.themoviedb.org/3/movie/${movieId}`);
+        url.search = new URLSearchParams({ language: 'en-US', append_to_response: 'credits,videos' });
+        const tmdbResponse = await fetch(url, {
+            headers: { Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}`, accept: 'application/json' },
+            signal: controller.signal
+        });
+        if (!tmdbResponse.ok) return null;
+        const movie = await tmdbResponse.json();
+        const trailer = (movie.videos?.results || []).find((video) =>
+            video.site === 'YouTube' && video.type === 'Trailer' && video.official
+        ) || (movie.videos?.results || []).find((video) => video.site === 'YouTube' && video.type === 'Trailer');
+        return {
+            id: movie.id,
+            title: movie.title || movie.original_title || 'Untitled film',
+            originalTitle: movie.original_title || '',
+            year: (movie.release_date || '').slice(0, 4),
+            runtime: movie.runtime || 0,
+            rating: movie.vote_average ? Number(movie.vote_average.toFixed(1)) : null,
+            voteCount: movie.vote_count || 0,
+            genres: (movie.genres || []).map((genre) => genre.name),
+            overview: movie.overview || 'No overview is available.',
+            tagline: movie.tagline || '',
+            poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : '',
+            backdrop: movie.backdrop_path ? `https://image.tmdb.org/t/p/w1280${movie.backdrop_path}` : '',
+            releaseDate: movie.release_date || '',
+            status: movie.status || '',
+            countries: (movie.production_countries || []).map((country) => country.name),
+            cast: (movie.credits?.cast || []).slice(0, 12).map((person) => ({
+                name: person.name,
+                character: person.character || '',
+                image: person.profile_path ? `https://image.tmdb.org/t/p/w185${person.profile_path}` : ''
+            })),
+            trailerKey: trailer?.key || ''
+        };
+    } catch (_) {
+        return null;
     } finally {
         clearTimeout(timeout);
     }
@@ -319,6 +366,12 @@ app.get('/api/free-movies', (request, response) => {
         .slice(0, 6)
         .map(publicMovieResult);
     response.json({ results });
+});
+app.get('/api/tmdb/movie/:id', async (request, response) => {
+    const movieId = Number.parseInt(request.params.id, 10);
+    const movie = await fetchTmdbMovieDetails(movieId);
+    if (!movie) return response.status(404).json({ error: 'Movie details are unavailable.' });
+    response.json({ movie });
 });
 app.get('/api/legal-movies', async (request, response) => {
     const rawQuery = String(request.query.q || '').trim().slice(0, 80);
