@@ -17,7 +17,69 @@ const io = new Server(server, {
     }
 });
 
+// These are full-length films in the public domain. Keeping an allow-list avoids
+// presenting unverified uploads as if they were licensed for streaming.
+const FREE_FULL_MOVIES = [
+    {
+        id: 'night-of-the-living-dead', title: 'Night of the Living Dead', year: '1968',
+        description: 'Horror classic · Full movie', archiveId: 'night-of-the-living-dead_202409',
+        file: 'Night Of The Living Dead.mp4'
+    },
+    {
+        id: 'his-girl-friday', title: 'His Girl Friday', year: '1940',
+        description: 'Comedy · Full movie', archiveId: 'HisGirlFriday1940',
+        file: 'seqhisgirlfridayfull1d_512kb.mp4'
+    },
+    {
+        id: 'the-general', title: 'The General', year: '1926',
+        description: 'Comedy · Full movie', archiveId: 'the-general-1926_202506',
+        file: 'The General (1926).mp4'
+    },
+    {
+        id: 'detour', title: 'Detour', year: '1945',
+        description: 'Film noir · Full movie', archiveId: 'detour-1945', file: 'Detour 1945.mp4'
+    },
+    {
+        id: 'last-man-on-earth', title: 'The Last Man on Earth', year: '1964',
+        description: 'Sci-fi horror · Full movie', archiveId: 'the-last-man-on-earth-1964_202606',
+        file: 'The Last Man on Earth -1964-.mp4'
+    },
+    {
+        id: 'phantom-of-the-opera', title: 'The Phantom of the Opera', year: '1925',
+        description: 'Silent horror · Full movie', archiveId: 'thephantomoftheopera1925_202004',
+        file: 'The Phantom of the Opera 1925.ia.mp4'
+    }
+];
+
+function movieStreamUrl(movie) {
+    return `https://archive.org/download/${encodeURIComponent(movie.archiveId)}/${encodeURIComponent(movie.file)}`;
+}
+
+function normaliseSearch(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+app.use((request, response, next) => {
+    const origin = request.headers.origin;
+    if (origin && allowedOrigins.has(origin)) response.setHeader('Access-Control-Allow-Origin', origin);
+    next();
+});
 app.get('/health', (_request, response) => response.json({ ok: true, service: 'stream-x-watch-together' }));
+app.get('/api/free-movies', (request, response) => {
+    const query = normaliseSearch(request.query.q).slice(0, 80);
+    const results = FREE_FULL_MOVIES
+        .filter((movie) => !query || normaliseSearch(`${movie.title} ${movie.year} ${movie.description}`).includes(query))
+        .slice(0, 6)
+        .map((movie) => ({
+            id: movie.id,
+            title: movie.title,
+            year: movie.year,
+            description: movie.description,
+            poster: `https://archive.org/services/img/${encodeURIComponent(movie.archiveId)}`,
+            url: movieStreamUrl(movie)
+        }));
+    response.json({ results });
+});
 app.use(express.static(path.join(__dirname)));
 
 const rooms = new Map();

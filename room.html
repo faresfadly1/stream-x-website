@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="movies-data.js"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -686,37 +685,8 @@
             <!-- Control Bar -->
             <div class="control-bar">
                 <div class="url-input-wrapper">
-                    <input type="text" class="url-input" id="urlInput" placeholder="Search a movie title or paste a YouTube/direct-video link" autocomplete="off">
-                    <div class="video-suggestions" id="videoSuggestions">
-                        <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
-                            <img src="https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
-                            <div class="suggestion-info">
-                                <div class="suggestion-title">Rick Astley - Never Gonna Give You Up</div>
-                                <div class="suggestion-meta">Rick Astley · 1.4B views</div>
-                            </div>
-                        </div>
-                        <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=jNQXAC9IVRw">
-                            <img src="https://img.youtube.com/vi/jNQXAC9IVRw/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
-                            <div class="suggestion-info">
-                                <div class="suggestion-title">Me at the zoo</div>
-                                <div class="suggestion-meta">jawed · 300M views</div>
-                            </div>
-                        </div>
-                        <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=9bZkp7q19f0">
-                            <img src="https://img.youtube.com/vi/9bZkp7q19f0/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
-                            <div class="suggestion-info">
-                                <div class="suggestion-title">PSY - GANGNAM STYLE</div>
-                                <div class="suggestion-meta">officialpsy · 5B views</div>
-                            </div>
-                        </div>
-                        <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=xeSiAU-kMqI">
-                            <img src="https://img.youtube.com/vi/xeSiAU-kMqI/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
-                            <div class="suggestion-info">
-                                <div class="suggestion-title">New Video Recommendation</div>
-                                <div class="suggestion-meta">YouTube · Views</div>
-                            </div>
-                        </div>
-                    </div>
+                    <input type="text" class="url-input" id="urlInput" placeholder="Search free full movies or paste a licensed video link" autocomplete="off">
+                    <div class="video-suggestions" id="videoSuggestions" aria-label="Free full-movie search results"></div>
                 </div>
                 <button class="close-btn">
                     <i class="fas fa-times"></i>
@@ -1525,26 +1495,11 @@
             showNotice('Voice chat is off.');
         }
 
-        function catalogMatches(query) {
-            const normaliseSearch = (value) => String(value || '')
-                .toLowerCase()
-                .replace(/[^\p{L}\p{N}]+/gu, ' ')
-                .trim();
-            const normalised = normaliseSearch(query);
-            if (!normalised || typeof moviesDatabase === 'undefined') return [];
-            return Object.values(moviesDatabase)
-                .filter((movie) => normaliseSearch(`${movie.title || ''} ${movie.alsoKnownAs || ''}`).includes(normalised))
-                .sort((first, second) => {
-                    const firstExact = normaliseSearch(first.title) === normalised;
-                    const secondExact = normaliseSearch(second.title) === normalised;
-                    return Number(secondExact) - Number(firstExact);
-                })
-                .slice(0, 6);
-        }
+        let searchTimer;
+        let searchRequest = 0;
+        let fullMovieResults = [];
 
-        function showMovieResults(query) {
-            const matches = catalogMatches(query);
-            if (!matches.length) return;
+        function showMovieResults(matches) {
             videoSuggestions.textContent = '';
             matches.forEach((movie) => {
                 const result = document.createElement('button');
@@ -1554,32 +1509,50 @@
                 result.innerHTML = `<img class="suggestion-thumbnail" alt=""><div class="suggestion-info"><div class="suggestion-title"></div><div class="suggestion-meta"></div></div>`;
                 result.querySelector('img').src = movie.poster || '';
                 result.querySelector('.suggestion-title').textContent = movie.title;
-                result.querySelector('.suggestion-meta').textContent = `${movie.year || ''} · Official trailer`;
-                result.addEventListener('click', () => chooseMedia(movie.trailer, movie.title));
+                result.querySelector('.suggestion-meta').textContent = `${movie.year || ''} · ${movie.description || 'Full movie'}`;
+                result.addEventListener('click', () => chooseMedia(movie.url, movie.title));
                 videoSuggestions.appendChild(result);
             });
-            videoSuggestions.classList.add('active');
+            videoSuggestions.classList.toggle('active', matches.length > 0);
+        }
+
+        async function searchFullMovies(query) {
+            const requestId = ++searchRequest;
+            try {
+                const response = await fetch(`${SERVER_URL}/api/free-movies?q=${encodeURIComponent(query)}`);
+                if (!response.ok) throw new Error('Search failed');
+                const data = await response.json();
+                if (requestId !== searchRequest) return;
+                fullMovieResults = data.results || [];
+                showMovieResults(fullMovieResults);
+            } catch (_) {
+                if (requestId === searchRequest) showNotice('Movie search is temporarily unavailable. Paste a licensed video link instead.', true);
+            }
         }
 
         function chooseMedia(value, title = '') {
             const media = getMediaFromUrl(value);
-            if (!media) {
-                const match = catalogMatches(value)[0];
-                if (match?.trailer) return chooseMedia(match.trailer, match.title);
-                return showNotice('Movie not found in the catalog. Paste a YouTube link or choose a listed movie.', true);
-            }
+            if (!media) return showNotice('Choose a full movie from the results or paste a licensed video link.', true);
             socket.emit('media-change', media);
             videoSuggestions.classList.remove('active');
             if (title) showNotice(`Playing ${title} for everyone in the room.`);
         }
 
-        urlInput.addEventListener('focus', () => videoSuggestions.classList.add('active'));
+        urlInput.addEventListener('focus', () => searchFullMovies(urlInput.value.trim()));
         urlInput.addEventListener('input', () => {
             const value = urlInput.value.trim();
-            if (value && !getMediaFromUrl(value)) showMovieResults(value);
+            clearTimeout(searchTimer);
+            if (!getMediaFromUrl(value)) searchTimer = setTimeout(() => searchFullMovies(value), 200);
         });
         document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
-        urlInput.addEventListener('keydown', (event) => { if (event.key === 'Enter' && urlInput.value.trim()) chooseMedia(urlInput.value); });
+        urlInput.addEventListener('keydown', async (event) => {
+            if (event.key !== 'Enter' || !urlInput.value.trim()) return;
+            const value = urlInput.value.trim();
+            if (getMediaFromUrl(value)) return chooseMedia(value);
+            await searchFullMovies(value);
+            if (fullMovieResults[0]) chooseMedia(fullMovieResults[0].url, fullMovieResults[0].title);
+            else showNotice('No full legal movie matched that title. Paste a licensed video link instead.', true);
+        });
         document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
         voiceBtn.addEventListener('click', toggleVoice);
