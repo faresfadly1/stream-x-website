@@ -685,8 +685,8 @@
             <!-- Control Bar -->
             <div class="control-bar">
                 <div class="url-input-wrapper">
-                    <input type="text" class="url-input" id="urlInput" placeholder="Search free full movies or paste a licensed video link" autocomplete="off">
-                    <div class="video-suggestions" id="videoSuggestions" aria-label="Free full-movie search results"></div>
+                    <input type="text" class="url-input" id="urlInput" placeholder="Search movies or paste a licensed video link" autocomplete="off">
+                    <div class="video-suggestions" id="videoSuggestions" aria-label="Legal movie search results"></div>
                 </div>
                 <button class="close-btn">
                     <i class="fas fa-times"></i>
@@ -1497,7 +1497,7 @@
 
         let searchTimer;
         let searchRequest = 0;
-        let fullMovieResults = [];
+        let movieResults = [];
 
         function showMovieResults(matches) {
             videoSuggestions.textContent = '';
@@ -1509,8 +1509,18 @@
                 result.innerHTML = `<img class="suggestion-thumbnail" alt=""><div class="suggestion-info"><div class="suggestion-title"></div><div class="suggestion-meta"></div></div>`;
                 result.querySelector('img').src = movie.poster || '';
                 result.querySelector('.suggestion-title').textContent = movie.title;
-                result.querySelector('.suggestion-meta').textContent = `${movie.year || ''} · ${movie.description || 'Full movie'}`;
-                result.addEventListener('click', () => chooseMedia(movie.url, movie.title));
+                const subtitle = movie.kind === 'playable'
+                    ? `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`
+                    : `${movie.year || ''} · ${movie.actionLabel || 'Find legal ways to watch'}`;
+                result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
+                result.title = movie.kind === 'playable'
+                    ? 'Play this legal full movie for everyone in the room'
+                    : 'Open official legal viewing options in a new tab';
+                result.addEventListener('click', () => {
+                    if (movie.kind === 'playable') return chooseMedia(movie.url, movie.title);
+                    window.open(movie.watchUrl, '_blank', 'noopener,noreferrer');
+                    showNotice('Official viewing options opened. Each person needs their own subscription or rental.');
+                });
                 videoSuggestions.appendChild(result);
             });
             videoSuggestions.classList.toggle('active', matches.length > 0);
@@ -1519,12 +1529,12 @@
         async function searchFullMovies(query) {
             const requestId = ++searchRequest;
             try {
-                const response = await fetch(`${SERVER_URL}/api/free-movies?q=${encodeURIComponent(query)}`);
+                const response = await fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}`);
                 if (!response.ok) throw new Error('Search failed');
                 const data = await response.json();
                 if (requestId !== searchRequest) return;
-                fullMovieResults = data.results || [];
-                showMovieResults(fullMovieResults);
+                movieResults = data.results || [];
+                showMovieResults(movieResults);
             } catch (_) {
                 if (requestId === searchRequest) showNotice('Movie search is temporarily unavailable. Paste a licensed video link instead.', true);
             }
@@ -1555,8 +1565,12 @@
             const value = urlInput.value.trim();
             if (getMediaFromUrl(value)) return chooseMedia(value);
             await searchFullMovies(value);
-            if (fullMovieResults[0]) chooseMedia(fullMovieResults[0].url, fullMovieResults[0].title);
-            else showNotice('No full legal movie matched that title. Paste a licensed video link instead.', true);
+            const playable = movieResults.find((movie) => movie.kind === 'playable');
+            if (playable) chooseMedia(playable.url, playable.title);
+            else if (movieResults[0]?.watchUrl) {
+                window.open(movieResults[0].watchUrl, '_blank', 'noopener,noreferrer');
+                showNotice('Official viewing options opened. Full room sync is available for public-domain or licensed direct video.');
+            } else showNotice('No legal match found. Paste a licensed video link instead.', true);
         });
         document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));

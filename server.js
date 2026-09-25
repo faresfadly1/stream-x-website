@@ -17,6 +17,12 @@ const io = new Server(server, {
     }
 });
 
+// Optional server-only token from themoviedb.org. It is deliberately never sent
+// to browsers: TMDB is used only for legal title discovery and official watch
+// pages, not for proxying or embedding copyrighted streams.
+const TMDB_READ_ACCESS_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN || '';
+const tmdbSearchCache = new Map();
+
 // These are full-length films in the public domain. Keeping an allow-list avoids
 // presenting unverified uploads as if they were licensed for streaming.
 const FREE_FULL_MOVIES = [
@@ -59,6 +65,61 @@ function normaliseSearch(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function matchesMovie(movie, query) {
+    if (!query) return true;
+    const searchable = normaliseSearch(`${movie.title} ${movie.year} ${movie.description}`);
+    return searchable.includes(query) || query.split(' ').every((word) => searchable.includes(word));
+}
+
+function publicMovieResult(movie) {
+    return {
+        id: `public-${movie.id}`,
+        kind: 'playable',
+        title: movie.title,
+        year: movie.year,
+        description: movie.description,
+        poster: `https://archive.org/services/img/${encodeURIComponent(movie.archiveId)}`,
+        url: movieStreamUrl(movie),
+        actionLabel: 'Full movie · watch together'
+    };
+}
+
+async function searchTmdbMovies(query) {
+    if (!TMDB_READ_ACCESS_TOKEN || query.length < 2) return [];
+    const cacheKey = query.toLowerCase();
+    const cached = tmdbSearchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.results;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    try {
+        const url = new URL('https://api.themoviedb.org/3/search/movie');
+        url.search = new URLSearchParams({ query, include_adult: 'false', language: 'en-US', page: '1' });
+        const tmdbResponse = await fetch(url, {
+            headers: { Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}`, accept: 'application/json' },
+            signal: controller.signal
+        });
+        if (!tmdbResponse.ok) return [];
+        const payload = await tmdbResponse.json();
+        const results = (payload.results || []).slice(0, 12).map((movie) => ({
+            id: `tmdb-${movie.id}`,
+            kind: 'legal-provider',
+            title: movie.title || movie.original_title || 'Untitled film',
+            year: (movie.release_date || '').slice(0, 4),
+            description: movie.overview || 'See legitimate streaming, rent, and purchase options.',
+            poster: movie.poster_path ? `https://image.tmdb.org/t/p/w185${movie.poster_path}` : '',
+            watchUrl: `https://www.themoviedb.org/movie/${movie.id}/watch?locale=EG`,
+            actionLabel: 'Find legal ways to watch'
+        }));
+        tmdbSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 5 * 60 * 1000 });
+        return results;
+    } catch (_) {
+        return [];
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 app.use((request, response, next) => {
     const origin = request.headers.origin;
     if (origin && allowedOrigins.has(origin)) response.setHeader('Access-Control-Allow-Origin', origin);
@@ -68,17 +129,24 @@ app.get('/health', (_request, response) => response.json({ ok: true, service: 's
 app.get('/api/free-movies', (request, response) => {
     const query = normaliseSearch(request.query.q).slice(0, 80);
     const results = FREE_FULL_MOVIES
-        .filter((movie) => !query || normaliseSearch(`${movie.title} ${movie.year} ${movie.description}`).includes(query))
+        .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
-        .map((movie) => ({
-            id: movie.id,
-            title: movie.title,
-            year: movie.year,
-            description: movie.description,
-            poster: `https://archive.org/services/img/${encodeURIComponent(movie.archiveId)}`,
-            url: movieStreamUrl(movie)
-        }));
+        .map(publicMovieResult);
     response.json({ results });
+});
+app.get('/api/legal-movies', async (request, response) => {
+    const rawQuery = String(request.query.q || '').trim().slice(0, 80);
+    const query = normaliseSearch(rawQuery);
+    const publicResults = FREE_FULL_MOVIES
+        .filter((movie) => matchesMovie(movie, query))
+        .slice(0, 6)
+        .map(publicMovieResult);
+    const catalogueResults = await searchTmdbMovies(rawQuery);
+    response.json({
+        results: [...publicResults, ...catalogueResults],
+        catalogueEnabled: Boolean(TMDB_READ_ACCESS_TOKEN),
+        message: TMDB_READ_ACCESS_TOKEN ? undefined : 'Legal full movies are ready. Add TMDB_READ_ACCESS_TOKEN on the server to search the larger legal discovery catalogue.'
+    });
 });
 app.use(express.static(path.join(__dirname)));
 

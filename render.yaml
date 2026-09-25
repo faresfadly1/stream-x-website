@@ -7,3 +7,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Add a TMDB API Read Access Token in Render to enable the large legal
+      # discovery catalogue. It remains server-side and is not exposed to users.
+      - key: TMDB_READ_ACCESS_TOKEN
+        sync: false
