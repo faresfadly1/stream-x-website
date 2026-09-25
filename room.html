@@ -1539,15 +1539,14 @@
                 result.querySelector('.suggestion-title').textContent = movie.title;
                 const subtitle = movie.kind === 'playable'
                     ? `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`
-                    : `${movie.year || ''} · ${movie.actionLabel || 'Find legal ways to watch'}`;
+                    : `${movie.year || ''} · ${movie.actionLabel || 'Availability only · not playable in this room'}`;
                 result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
                 result.title = movie.kind === 'playable'
                     ? 'Play this legal full movie for everyone in the room'
-                    : 'Open official legal viewing options in a new tab';
+                    : 'This result is a catalogue match, not a video source that can be played in the room';
                 result.addEventListener('click', () => {
                     if (movie.kind === 'playable') return chooseMedia(movie.url, movie.title);
-                    window.open(movie.watchUrl, '_blank', 'noopener,noreferrer');
-                    showNotice('Official viewing options opened. Each person needs their own subscription or rental.');
+                    showNotice(`${movie.title} is a catalogue match, not a licensed video file for the shared player. To watch together, choose a Full movie result or paste a direct video link you are licensed to share.`, true);
                 });
                 videoSuggestions.appendChild(result);
             });

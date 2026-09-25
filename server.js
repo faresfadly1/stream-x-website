@@ -118,7 +118,7 @@ async function searchTmdbMovies(query) {
             description: movie.overview || 'See legitimate streaming, rent, and purchase options.',
             poster: movie.poster_path ? `https://image.tmdb.org/t/p/w185${movie.poster_path}` : '',
             watchUrl: `https://www.themoviedb.org/movie/${movie.id}/watch?locale=EG`,
-            actionLabel: 'Find legal ways to watch'
+            actionLabel: 'Availability only · not room playback'
         }));
         tmdbSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 5 * 60 * 1000 });
         return results;
@@ -173,7 +173,7 @@ async function searchOpenFilmCatalogue(query) {
                 poster: '',
                 // This is a normal provider-discovery link, not a stream or an embed.
                 watchUrl: `https://www.justwatch.com/eg/search?q=${encodeURIComponent(item.label || query)}`,
-                actionLabel: 'Find legal streaming options'
+                actionLabel: 'Availability only · not room playback'
             }));
         openCatalogueCache.set(cacheKey, { results, expiresAt: Date.now() + 15 * 60 * 1000 });
         return results;
@@ -233,7 +233,7 @@ async function searchWikipediaFilms(query) {
                     description,
                     poster: '',
                     watchUrl: `https://www.justwatch.com/eg/search?q=${encodeURIComponent(item.title || query)}`,
-                    actionLabel: 'Find legal streaming options'
+                    actionLabel: 'Availability only · not room playback'
                 };
             });
         wikipediaSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 15 * 60 * 1000 });
