@@ -270,8 +270,12 @@ app.get('/api/legal-movies', async (request, response) => {
         searchOpenFilmCatalogue(lookupQuery),
         searchWikipediaFilms(lookupQuery)
     ]);
+    // Wikipedia is a tolerant fallback for aliases and spelling variations.
+    // Prefer the stricter catalogue whenever it found a film so a query does
+    // not get cluttered with actor, award, or soundtrack pages.
+    const fallbackResults = tmdbResults.length || openCatalogueResults.length ? [] : wikipediaResults;
     const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
-    const catalogueResults = [...tmdbResults, ...openCatalogueResults, ...wikipediaResults].filter((movie) => {
+    const catalogueResults = [...tmdbResults, ...openCatalogueResults, ...fallbackResults].filter((movie) => {
         const key = normaliseSearch(movie.title);
         if (knownTitles.has(key)) return false;
         knownTitles.add(key);
