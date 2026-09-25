@@ -20,6 +20,13 @@
         .poster { width: 100%; border-radius: 14px; box-shadow: 0 14px 36px #0009; background: #17202b; }
         h2 { margin-top: 0; } p { color: #c5d0db; line-height: 1.65; }
         .trailer { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 14px; margin-top: 24px; }
+        .legal-watch { margin: 28px 0; padding: 20px; border: 1px solid #235b43; border-radius: 14px; background: #0e211a; }
+        .legal-watch h2 { margin-bottom: 8px; }
+        .providers { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+        .provider { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; background: #172d24; color: #eaf7ef; font-size: 14px; }
+        .provider img { width: 26px; height: 26px; object-fit: contain; border-radius: 6px; }
+        .watch-legal { display: inline-block; margin-top: 6px; padding: 11px 15px; border-radius: 8px; background: #10c778; color: #04150d; font-weight: 800; text-decoration: none; }
+        .attribution { margin: 12px 0 0; font-size: 12px; color: #9cb1a4; }
         .cast { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; }
         .person img, .avatar { width: 100%; aspect-ratio: 1; object-fit: cover; background: #1c2632; border-radius: 10px; }
         .person strong, .person span { display: block; margin-top: 6px; } .person span { color: #aebcca; font-size: 13px; }
@@ -44,7 +51,9 @@
             const { movie } = await response.json();
             document.title = `${movie.title} · Stream X`;
             const cast = movie.cast.map((person) => `<article class="person">${person.image ? `<img src="${person.image}" alt="">` : '<div class="avatar"></div>'}<strong>${escapeHtml(person.name)}</strong><span>${escapeHtml(person.character)}</span></article>`).join('');
-            app.innerHTML = `<section class="hero" style="background-image:url('${movie.backdrop}')"><div class="intro"><h1>${escapeHtml(movie.title)}</h1><div class="meta"><span>${escapeHtml(movie.year)}</span><span>${movie.runtime ? `${movie.runtime} min` : ''}</span><span>${movie.rating ? `★ ${movie.rating}/10` : ''}</span></div>${movie.tagline ? `<p><em>${escapeHtml(movie.tagline)}</em></p>` : ''}</div></section><section class="layout"><img class="poster" src="${movie.poster}" alt="${escapeHtml(movie.title)} poster"><div><div class="chips">${movie.genres.map((genre) => `<span class="chip">${escapeHtml(genre)}</span>`).join('')}</div><h2>Overview</h2><p>${escapeHtml(movie.overview)}</p><p><strong>Released:</strong> ${escapeHtml(movie.releaseDate || '—')} &nbsp; <strong>Countries:</strong> ${escapeHtml(movie.countries.join(', ') || '—')}</p>${movie.trailerKey ? `<iframe class="trailer" title="Official trailer" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(movie.trailerKey)}" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` : ''}<h2 style="margin-top:32px">Cast</h2><div class="cast">${cast || '<p>Cast information is unavailable.</p>'}</div></div></section>`;
+            const providers = (movie.providers || []).map((provider) => `<span class="provider">${provider.logo ? `<img src="${provider.logo}" alt="">` : ''}<span>${escapeHtml(provider.name)} · ${escapeHtml(provider.type)}</span></span>`).join('');
+            const legalWatch = `<section class="legal-watch"><h2>Watch legally in Egypt</h2>${providers ? `<div class="providers">${providers}</div>` : '<p>No official streaming availability is currently listed for Egypt.</p>'}<a class="watch-legal" href="${escapeHtml(movie.availabilityLink)}" target="_blank" rel="noreferrer">Open legal viewing options</a><p class="attribution">Availability data by JustWatch.</p></section>`;
+            app.innerHTML = `<section class="hero" style="background-image:url('${movie.backdrop}')"><div class="intro"><h1>${escapeHtml(movie.title)}</h1><div class="meta"><span>${escapeHtml(movie.year)}</span><span>${movie.runtime ? `${movie.runtime} min` : ''}</span><span>${movie.rating ? `★ ${movie.rating}/10` : ''}</span></div>${movie.tagline ? `<p><em>${escapeHtml(movie.tagline)}</em></p>` : ''}</div></section><section class="layout"><img class="poster" src="${movie.poster}" alt="${escapeHtml(movie.title)} poster"><div><div class="chips">${movie.genres.map((genre) => `<span class="chip">${escapeHtml(genre)}</span>`).join('')}</div><h2>Overview</h2><p>${escapeHtml(movie.overview)}</p><p><strong>Released:</strong> ${escapeHtml(movie.releaseDate || '—')} &nbsp; <strong>Countries:</strong> ${escapeHtml(movie.countries.join(', ') || '—')}</p>${legalWatch}<h2 style="margin-top:32px">Cast</h2><div class="cast">${cast || '<p>Cast information is unavailable.</p>'}</div></div></section>`;
         }
         load().catch((error) => { app.innerHTML = `<div class="notice">${escapeHtml(error.message)}</div>`; });
     </script>

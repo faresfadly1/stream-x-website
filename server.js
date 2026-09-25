@@ -198,12 +198,32 @@ async function fetchTmdbMovieDetails(movieId) {
     try {
         const url = new URL(`https://api.themoviedb.org/3/movie/${movieId}`);
         url.search = new URLSearchParams({ language: 'en-US', append_to_response: 'credits,videos' });
-        const tmdbResponse = await fetch(url, {
-            headers: { Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}`, accept: 'application/json' },
-            signal: controller.signal
-        });
+        const providerUrl = new URL(`https://api.themoviedb.org/3/movie/${movieId}/watch/providers`);
+        const headers = { Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}`, accept: 'application/json' };
+        const [tmdbResponse, providerResponse] = await Promise.all([
+            fetch(url, { headers, signal: controller.signal }),
+            fetch(providerUrl, { headers, signal: controller.signal })
+        ]);
         if (!tmdbResponse.ok) return null;
         const movie = await tmdbResponse.json();
+        const providerData = providerResponse.ok ? await providerResponse.json() : {};
+        const egyptAvailability = providerData.results?.EG || null;
+        const providerTypes = [
+            ['flatrate', 'Stream'],
+            ['free', 'Free'],
+            ['ads', 'With ads'],
+            ['rent', 'Rent'],
+            ['buy', 'Buy']
+        ];
+        const providerNames = new Set();
+        const providers = providerTypes.flatMap(([key, label]) => (egyptAvailability?.[key] || [])
+            .filter((provider) => !providerNames.has(provider.provider_id) && providerNames.add(provider.provider_id))
+            .map((provider) => ({
+                name: provider.provider_name,
+                type: label,
+                logo: provider.logo_path ? `https://image.tmdb.org/t/p/w92${provider.logo_path}` : ''
+            }))
+        );
         const trailer = (movie.videos?.results || []).find((video) =>
             video.site === 'YouTube' && video.type === 'Trailer' && video.official
         ) || (movie.videos?.results || []).find((video) => video.site === 'YouTube' && video.type === 'Trailer');
@@ -223,6 +243,8 @@ async function fetchTmdbMovieDetails(movieId) {
             releaseDate: movie.release_date || '',
             status: movie.status || '',
             countries: (movie.production_countries || []).map((country) => country.name),
+            providers,
+            availabilityLink: egyptAvailability?.link || `https://www.themoviedb.org/movie/${movie.id}/watch?locale=EG`,
             cast: (movie.credits?.cast || []).slice(0, 12).map((person) => ({
                 name: person.name,
                 character: person.character || '',
