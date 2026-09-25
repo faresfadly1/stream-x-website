@@ -149,7 +149,10 @@ async function searchOpenFilmCatalogue(query) {
         });
         if (!catalogueResponse.ok) return [];
         const payload = await catalogueResponse.json();
-        const filmPattern = /\b(film|movie|animated|documentary|cinema)\b|فيلم|سينمائي/i;
+        // Wikidata descriptions normally begin with a year/type for actual
+        // films. Requiring that shape excludes related soundtracks, effects,
+        // games, and books that happen to mention a film in their description.
+        const filmPattern = /^(?:\d{4}\s+)?(?:[a-z]+(?:\s+|[-–])){0,4}(?:film|movie)\b|^(?:animated|documentary|short|television)\s+film\b|^(?:فيلم|عمل سينمائي)/i;
         const results = (payload.search || [])
             .filter((item) => filmPattern.test(item.description || ''))
             .slice(0, 12)
