@@ -21,7 +21,6 @@ const moviesDatabase = {
         language: "English",
         alsoKnownAs: "Dune 2",
         filmingLocations: "Hungary, Italy, United Arab Emirates",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt15239678",
         cast: [
             {
                 name: "Timothée Chalamet",
@@ -76,7 +75,6 @@ const moviesDatabase = {
         language: "English, German",
         alsoKnownAs: "Oppenheimer: The Father of the Atomic Bomb",
         filmingLocations: "New Mexico, California, New Jersey",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt15398776",
         cast: [
             {
                 name: "Cillian Murphy",
@@ -131,7 +129,6 @@ const moviesDatabase = {
         language: "English, French, Japanese",
         alsoKnownAs: "John Wick 4",
         filmingLocations: "Paris, Berlin, Jordan, Japan",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt10366206",
         cast: [
             {
                 name: "Keanu Reeves",
@@ -186,7 +183,6 @@ const moviesDatabase = {
         language: "English",
         alsoKnownAs: "Barbie: The Movie",
         filmingLocations: "California, London",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt1517268",
         cast: [
             {
                 name: "Margot Robbie",
@@ -241,7 +237,6 @@ const moviesDatabase = {
         language: "English",
         alsoKnownAs: "Avatar 2",
         filmingLocations: "New Zealand, California",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt1630029",
         cast: [
             {
                 name: "Sam Worthington",
@@ -296,7 +291,6 @@ const moviesDatabase = {
         language: "English",
         alsoKnownAs: "The Batman: Part I",
         filmingLocations: "Liverpool, London, Chicago",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt1877830",
         cast: [
             {
                 name: "Robert Pattinson",
@@ -351,7 +345,6 @@ const moviesDatabase = {
         language: "English",
         alsoKnownAs: "Top Gun 2",
         filmingLocations: "California, Nevada",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt1745960",
         cast: [
             {
                 name: "Tom Cruise",
@@ -406,7 +399,6 @@ const moviesDatabase = {
         language: "English",
         alsoKnownAs: "Rita Hayworth and Shawshank Redemption",
         filmingLocations: "Ohio, Maine",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt0111161",
         cast: [
             {
                 name: "Tim Robbins",
@@ -461,7 +453,6 @@ const moviesDatabase = {
         language: "English, Italian",
         alsoKnownAs: "Mario Puzo's The Godfather",
         filmingLocations: "New York, Sicily",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt0068646",
         cast: [
             {
                 name: "Marlon Brando",
@@ -516,7 +507,6 @@ const moviesDatabase = {
         language: "English, Mandarin",
         alsoKnownAs: "Batman: The Dark Knight",
         filmingLocations: "Chicago, Hong Kong, London",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt0468569",
         cast: [
             {
                 name: "Christian Bale",
@@ -571,7 +561,6 @@ const moviesDatabase = {
         language: "English, Spanish, French",
         alsoKnownAs: "Pulp Fiction: Stories from the Underworld",
         filmingLocations: "Los Angeles, California",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt0110912",
         cast: [
             {
                 name: "John Travolta",
@@ -626,7 +615,6 @@ const moviesDatabase = {
         language: "English",
         alsoKnownAs: "Fight Club: An IMAX Experience",
         filmingLocations: "Los Angeles, California",
-        fullMovieUrl: "https://vidsrc.xyz/embed/movie/tt0137523",
         cast: [
             {
                 name: "Brad Pitt",

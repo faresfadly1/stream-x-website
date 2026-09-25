@@ -1595,7 +1595,7 @@
             <h2>Stranger Things</h2>
             <p>Discover thousands of movies and TV shows from all around the world. Unlimited entertainment at your fingertips with the highest quality streaming.</p>
             <div class="hero-buttons">
-                <a href="#" class="btn btn-primary"><i class="fas fa-play"></i> Watch Now</a>
+                <a href="room.html?title=Stranger%20Things" class="btn btn-primary"><i class="fas fa-play"></i> Watch Together</a>
                 <a href="#" class="btn btn-secondary"><i class="fas fa-info-circle"></i> More Info</a>
             </div>
             <div class="hero-info">
@@ -2189,10 +2189,11 @@
             const ratingSpan = document.querySelector('.modal-header-content .rating span');
             ratingSpan.textContent = `${movie.rating}/10 (${Math.floor(Math.random() * 500 + 100)}K Reviews)`;
             
-            // Update Watch Now button to open full movie
+            // Send the selected title into a new shared room. The room only
+            // plays public-domain or otherwise licensed direct-video results.
             const watchNowBtn = document.querySelector('.modal-header-content .actions .btn-primary');
             watchNowBtn.onclick = function() {
-                window.open(movie.fullMovieUrl, '_blank');
+                window.location.href = `room.html?title=${encodeURIComponent(movie.title)}`;
             };
             
             // Update overview
@@ -2365,6 +2366,16 @@
                 const modal = document.getElementById('movieModal');
                 modal.classList.add('active');
                 document.body.style.overflow = 'hidden';
+            });
+        });
+
+        document.querySelectorAll('.movie-card .action-btn:first-child').forEach((button) => {
+            button.title = 'Open a Watch Together room';
+            button.addEventListener('click', function(event) {
+                event.stopPropagation();
+                const movieId = this.closest('.movie-card').getAttribute('data-movie-id');
+                const movie = moviesDatabase[movieId];
+                if (movie) window.location.href = `room.html?title=${encodeURIComponent(movie.title)}`;
             });
         });
 
