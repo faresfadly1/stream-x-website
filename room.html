@@ -1133,7 +1133,6 @@
         const state = {
             roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
             lastTime: 0, lastVolume: 100,
-            requestedTitle: '',
             voice: { enabled: false, stream: null, peers: new Map() }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1155,7 +1154,6 @@
         function initialiseRoom() {
             const params = new URLSearchParams(window.location.search);
             state.roomId = params.get('room');
-            state.requestedTitle = (params.get('title') || '').trim().slice(0, 80);
             if (!state.roomId) {
                 state.roomId = createRoomId();
                 params.set('room', state.roomId);
@@ -1655,11 +1653,6 @@
         });
 
         initialiseRoom();
-        if (state.requestedTitle) {
-            urlInput.value = state.requestedTitle;
-            searchFullMovies(state.requestedTitle);
-            showNotice(`Searching the legal shared catalogue for ${state.requestedTitle}.`);
-        }
     </script>
 </body>
 </html>

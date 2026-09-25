@@ -429,7 +429,7 @@
             <h2>IT: Welcome to Derry</h2>
             <p>Return to the cursed town of Derry, Maine, where dark secrets and terrifying horrors await. Experience the chilling origins of evil in this terrifying new series.</p>
             <div class="hero-buttons">
-                <a href="room.html?title=IT%3A%20Welcome%20to%20Derry" class="btn btn-primary"><i class="fas fa-play"></i> Watch Together<br><small style="font-size: 12px; font-weight: 400;">Find a legal shared source</small></a>
+                <a href="#top-shows" class="btn btn-primary"><i class="fas fa-play"></i> Browse Series<br><small style="font-size: 12px; font-weight: 400;">Explore series details</small></a>
                 <button class="btn-secondary" style="width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.2); border: none; color: white; cursor: pointer; font-size: 20px;">
                     <i class="fas fa-plus"></i>
                 </button>
@@ -441,7 +441,7 @@
     </section>
 
     <!-- Top-rated TV series -->
-    <section class="featured">
+    <section class="featured" id="top-shows">
         <div class="section-header">
             <h2 class="section-title">Top-rated TV series on IMDb</h2>
             <div style="display: flex; align-items: center; gap: 20px;">
@@ -551,14 +551,6 @@
     </section>
 
     <script>
-        document.querySelectorAll('.show-card').forEach((card) => {
-            card.style.cursor = 'pointer';
-            card.addEventListener('click', () => {
-                const title = card.querySelector('h3')?.textContent?.trim();
-                if (title) window.location.href = `room.html?title=${encodeURIComponent(title)}`;
-            });
-        });
-
         // Header scroll effect
         window.addEventListener('scroll', function() {
             const header = document.querySelector('header');
