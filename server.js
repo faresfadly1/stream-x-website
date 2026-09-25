@@ -23,6 +23,7 @@ const io = new Server(server, {
 const TMDB_READ_ACCESS_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN || '';
 const tmdbSearchCache = new Map();
 const openCatalogueCache = new Map();
+const wikipediaSearchCache = new Map();
 
 // These are full-length films in the public domain. Keeping an allow-list avoids
 // presenting unverified uploads as if they were licensed for streaming.
@@ -183,6 +184,65 @@ async function searchOpenFilmCatalogue(query) {
     }
 }
 
+function plainSnippet(value) {
+    return String(value || '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&#39;/g, "'")
+        .trim();
+}
+
+// A second free catalogue makes Arabic names, aliases, and title variations
+// much more forgiving. It is discovery metadata, never a movie stream.
+async function searchWikipediaFilms(query) {
+    if (query.length < 2) return [];
+    const language = /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en';
+    const cacheKey = `${language}:${query.toLowerCase()}`;
+    const cached = wikipediaSearchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.results;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    try {
+        const url = new URL(`https://${language}.wikipedia.org/w/api.php`);
+        url.search = new URLSearchParams({
+            action: 'query', list: 'search', srsearch: query, srnamespace: '0',
+            srlimit: '30', format: 'json', origin: '*'
+        });
+        const wikipediaResponse = await fetch(url, {
+            headers: { accept: 'application/json', 'user-agent': 'StreamX legal film discovery' },
+            signal: controller.signal
+        });
+        if (!wikipediaResponse.ok) return [];
+        const payload = await wikipediaResponse.json();
+        const filmPattern = /\b(film|movie|cinema)\b|(?:^|[\s،«])(?:فيلم|فلم)(?:\s|$)/i;
+        const nonFilmPattern = /soundtrack|score|album|novel|book|game|disambiguation|موسيقى|رواية|لعبة/i;
+        const results = (payload.query?.search || [])
+            .filter((item) => filmPattern.test(plainSnippet(item.snippet)) && !nonFilmPattern.test(item.title))
+            .slice(0, 12)
+            .map((item) => {
+                const description = plainSnippet(item.snippet) || 'Film catalogue record';
+                return {
+                    id: `wikipedia-${language}-${item.pageid}`,
+                    kind: 'legal-provider',
+                    title: item.title || query,
+                    year: description.match(/\b(?:18|19|20)\d{2}\b/)?.[0] || '',
+                    description,
+                    poster: '',
+                    watchUrl: `https://www.justwatch.com/eg/search?q=${encodeURIComponent(item.title || query)}`,
+                    actionLabel: 'Find legal streaming options'
+                };
+            });
+        wikipediaSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 15 * 60 * 1000 });
+        return results;
+    } catch (_) {
+        return [];
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 app.use((request, response, next) => {
     const origin = request.headers.origin;
     if (origin && allowedOrigins.has(origin)) response.setHeader('Access-Control-Allow-Origin', origin);
@@ -205,12 +265,13 @@ app.get('/api/legal-movies', async (request, response) => {
         .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
         .map(publicMovieResult);
-    const [tmdbResults, openCatalogueResults] = await Promise.all([
+    const [tmdbResults, openCatalogueResults, wikipediaResults] = await Promise.all([
         searchTmdbMovies(lookupQuery),
-        searchOpenFilmCatalogue(lookupQuery)
+        searchOpenFilmCatalogue(lookupQuery),
+        searchWikipediaFilms(lookupQuery)
     ]);
     const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
-    const catalogueResults = [...tmdbResults, ...openCatalogueResults].filter((movie) => {
+    const catalogueResults = [...tmdbResults, ...openCatalogueResults, ...wikipediaResults].filter((movie) => {
         const key = normaliseSearch(movie.title);
         if (knownTitles.has(key)) return false;
         knownTitles.add(key);
