@@ -137,11 +137,41 @@ io.on('connection', (socket) => {
         io.to(socket.data.roomId).emit('chat-message', { username: socket.data.username, message: text, timestamp: new Date().toISOString() });
     });
 
+    // WebRTC signalling only. Audio itself travels peer-to-peer and is never stored on this server.
+    socket.on('voice-join', () => {
+        const roomId = socket.data.roomId;
+        const members = io.sockets.adapter.rooms.get(roomId);
+        if (!members) return;
+        socket.data.voiceActive = true;
+        for (const peerId of members) {
+            if (peerId === socket.id) continue;
+            const peer = io.sockets.sockets.get(peerId);
+            if (peer?.data.voiceActive) socket.emit('voice-peer-joined', peerId);
+        }
+        socket.to(roomId).emit('voice-presence', { id: socket.id, active: true });
+    });
+
+    socket.on('voice-leave', () => {
+        if (!socket.data.roomId) return;
+        socket.data.voiceActive = false;
+        socket.to(socket.data.roomId).emit('voice-peer-left', socket.id);
+        socket.to(socket.data.roomId).emit('voice-presence', { id: socket.id, active: false });
+    });
+
+    socket.on('voice-signal', ({ target, signal } = {}) => {
+        const roomId = socket.data.roomId;
+        const recipient = io.sockets.sockets.get(target);
+        if (!roomId || !recipient || recipient.data.roomId !== roomId || !recipient.data.voiceActive) return;
+        if (!signal || typeof signal !== 'object' || JSON.stringify(signal).length > 16000) return;
+        recipient.emit('voice-signal', { from: socket.id, signal });
+    });
+
     socket.on('disconnect', () => {
         const roomId = socket.data.roomId;
         const room = rooms.get(roomId);
         if (!room) return;
         room.users = room.users.filter((user) => user.id !== socket.id);
+        if (socket.data.voiceActive) io.to(roomId).emit('voice-peer-left', socket.id);
         if (room.users.length === 0) rooms.delete(roomId);
         else {
             publishRoomState(roomId, room);

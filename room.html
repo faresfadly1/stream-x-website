@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="movies-data.js"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -81,6 +82,16 @@
 
         .connection-status.connected { color: var(--green); }
         .connection-status.error { color: #ff6b6b; }
+
+        .voice-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--white);
+        }
+
+        .voice-btn.active {
+            background: var(--green);
+            color: var(--black);
+        }
 
         .btn {
             padding: 8px 20px;
@@ -659,11 +670,8 @@
         </div>
         <div class="header-actions">
             <span class="connection-status" id="connectionStatus" role="status">Connecting…</span>
-            <button class="btn btn-primary">
-                <i class="fab fa-discord"></i>
-            </button>
-            <button class="btn btn-primary">
-                <i class="fab fa-github"></i>
+            <button class="btn voice-btn" id="voiceBtn" type="button" aria-pressed="false">
+                <i class="fas fa-microphone"></i> Voice off
             </button>
             <button class="btn btn-primary">
                 <i class="fas fa-plus"></i> New Room
@@ -678,7 +686,7 @@
             <!-- Control Bar -->
             <div class="control-bar">
                 <div class="url-input-wrapper">
-                    <input type="text" class="url-input" id="urlInput" placeholder="Enter video file URL, magnet link, YouTube link, or YouTube search term">
+                    <input type="text" class="url-input" id="urlInput" placeholder="Search a movie title or paste a YouTube/direct-video link" autocomplete="off">
                     <div class="video-suggestions" id="videoSuggestions">
                         <div class="suggestion-item" data-url="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
                             <img src="https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg" alt="Video" class="suggestion-thumbnail">
@@ -1152,13 +1160,18 @@
         const SERVER_URL = ['localhost', '127.0.0.1'].includes(window.location.hostname)
             ? 'http://localhost:3000'
             : 'https://stream-x-backend.onrender.com';
-        const state = { roomId: null, player: null, media: null, ready: false, suppressUntil: 0, lastTime: 0, lastVolume: 100 };
+        const state = {
+            roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
+            lastTime: 0, lastVolume: 100,
+            voice: { enabled: false, stream: null, peers: new Map() }
+        };
         const videoFrame = document.getElementById('videoFrame');
         const emptyState = document.getElementById('emptyState');
         const errorMessage = document.getElementById('errorMessage');
         const urlInput = document.getElementById('urlInput');
         const videoSuggestions = document.getElementById('videoSuggestions');
         const connectionStatus = document.getElementById('connectionStatus');
+        const voiceBtn = document.getElementById('voiceBtn');
         const usernameKey = 'stream-x-display-name';
         const savedName = localStorage.getItem(usernameKey);
         const username = savedName || `Guest ${Math.floor(Math.random() * 900 + 100)}`;
@@ -1188,6 +1201,7 @@
         socket.on('connect', () => {
             setConnectionStatus('Live', 'connected');
             socket.emit('join-room', state.roomId, username);
+            if (state.voice.enabled) socket.emit('voice-join');
         });
         socket.on('disconnect', () => setConnectionStatus('Reconnecting…'));
         socket.on('connect_error', () => setConnectionStatus('Live service unavailable', 'error'));
@@ -1201,6 +1215,9 @@
         });
         socket.on('media-change', ({ media, playback }) => loadMedia(media, playback));
         socket.on('playback-action', ({ playback }) => applyPlayback(playback));
+        socket.on('voice-peer-joined', (peerId) => state.voice.enabled && createVoicePeer(peerId, true));
+        socket.on('voice-peer-left', (peerId) => removeVoicePeer(peerId));
+        socket.on('voice-signal', ({ from, signal }) => state.voice.enabled && handleVoiceSignal(from, signal));
 
         window.onYouTubeIframeAPIReady = () => { state.youtubeReady = true; };
 
@@ -1391,18 +1408,177 @@
             setTimeout(() => notification.remove(), 3500);
         }
 
-        function chooseMedia(value) {
+        function updateVoiceButton() {
+            const active = state.voice.enabled;
+            voiceBtn.classList.toggle('active', active);
+            voiceBtn.setAttribute('aria-pressed', String(active));
+            voiceBtn.innerHTML = active
+                ? '<i class="fas fa-microphone"></i> Voice on'
+                : '<i class="fas fa-microphone-slash"></i> Voice off';
+        }
+
+        async function toggleVoice() {
+            if (state.voice.enabled) return leaveVoice();
+            if (!navigator.mediaDevices?.getUserMedia) return showNotice('Voice chat needs a modern browser with microphone access.', true);
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: { ideal: 48000 },
+                        channelCount: { ideal: 2 },
+                        latency: { ideal: 0.01 }
+                    },
+                    video: false
+                });
+                stream.getAudioTracks().forEach((track) => { track.contentHint = 'speech'; });
+                state.voice.stream = stream;
+                state.voice.enabled = true;
+                updateVoiceButton();
+                socket.emit('voice-join');
+                showNotice('Voice chat is on. Your audio is encrypted peer-to-peer.');
+            } catch (error) {
+                showNotice(error.name === 'NotAllowedError' ? 'Allow microphone access to join voice chat.' : 'Could not start voice chat.', true);
+            }
+        }
+
+        function voiceConfiguration() {
+            return {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ],
+                iceCandidatePoolSize: 10
+            };
+        }
+
+        function createVoicePeer(peerId, initiator) {
+            if (state.voice.peers.has(peerId) || !state.voice.stream) return state.voice.peers.get(peerId)?.connection;
+            const connection = new RTCPeerConnection(voiceConfiguration());
+            const peer = { connection, pendingCandidates: [], audio: null };
+            state.voice.peers.set(peerId, peer);
+            state.voice.stream.getTracks().forEach((track) => connection.addTrack(track, state.voice.stream));
+            connection.onicecandidate = ({ candidate }) => {
+                if (candidate) socket.emit('voice-signal', { target: peerId, signal: { candidate } });
+            };
+            connection.ontrack = ({ streams }) => {
+                const stream = streams[0];
+                if (!stream) return;
+                const audio = document.createElement('audio');
+                audio.autoplay = true;
+                audio.playsInline = true;
+                audio.dataset.peerId = peerId;
+                audio.srcObject = stream;
+                document.body.appendChild(audio);
+                peer.audio = audio;
+            };
+            connection.onconnectionstatechange = () => {
+                if (['failed', 'closed'].includes(connection.connectionState)) removeVoicePeer(peerId);
+            };
+            if (initiator) {
+                connection.createOffer()
+                    .then((offer) => connection.setLocalDescription(offer))
+                    .then(() => socket.emit('voice-signal', { target: peerId, signal: { description: connection.localDescription } }))
+                    .catch(() => removeVoicePeer(peerId));
+            }
+            return connection;
+        }
+
+        async function handleVoiceSignal(peerId, signal) {
+            const connection = createVoicePeer(peerId, false);
+            const peer = state.voice.peers.get(peerId);
+            if (!connection || !peer) return;
+            try {
+                if (signal.description) {
+                    await connection.setRemoteDescription(signal.description);
+                    while (peer.pendingCandidates.length) await connection.addIceCandidate(peer.pendingCandidates.shift());
+                    if (signal.description.type === 'offer') {
+                        await connection.setLocalDescription(await connection.createAnswer());
+                        socket.emit('voice-signal', { target: peerId, signal: { description: connection.localDescription } });
+                    }
+                } else if (signal.candidate) {
+                    if (connection.remoteDescription) await connection.addIceCandidate(signal.candidate);
+                    else peer.pendingCandidates.push(signal.candidate);
+                }
+            } catch (_) {
+                removeVoicePeer(peerId);
+            }
+        }
+
+        function removeVoicePeer(peerId) {
+            const peer = state.voice.peers.get(peerId);
+            if (!peer) return;
+            peer.connection.onconnectionstatechange = null;
+            peer.connection.close();
+            peer.audio?.remove();
+            state.voice.peers.delete(peerId);
+        }
+
+        function leaveVoice() {
+            state.voice.peers.forEach((_peer, peerId) => removeVoicePeer(peerId));
+            state.voice.stream?.getTracks().forEach((track) => track.stop());
+            state.voice.stream = null;
+            state.voice.enabled = false;
+            socket.emit('voice-leave');
+            updateVoiceButton();
+            showNotice('Voice chat is off.');
+        }
+
+        function catalogMatches(query) {
+            const normalised = query.trim().toLowerCase();
+            if (!normalised || typeof moviesDatabase === 'undefined') return [];
+            return Object.values(moviesDatabase)
+                .filter((movie) => `${movie.title || ''} ${movie.alsoKnownAs || ''}`.toLowerCase().includes(normalised))
+                .sort((first, second) => {
+                    const firstExact = first.title?.toLowerCase() === normalised;
+                    const secondExact = second.title?.toLowerCase() === normalised;
+                    return Number(secondExact) - Number(firstExact);
+                })
+                .slice(0, 6);
+        }
+
+        function showMovieResults(query) {
+            const matches = catalogMatches(query);
+            if (!matches.length) return;
+            videoSuggestions.textContent = '';
+            matches.forEach((movie) => {
+                const result = document.createElement('button');
+                result.type = 'button';
+                result.className = 'suggestion-item';
+                result.style.width = '100%';
+                result.innerHTML = `<img class="suggestion-thumbnail" alt=""><div class="suggestion-info"><div class="suggestion-title"></div><div class="suggestion-meta"></div></div>`;
+                result.querySelector('img').src = movie.poster || '';
+                result.querySelector('.suggestion-title').textContent = movie.title;
+                result.querySelector('.suggestion-meta').textContent = `${movie.year || ''} · Official trailer`;
+                result.addEventListener('click', () => chooseMedia(movie.trailer, movie.title));
+                videoSuggestions.appendChild(result);
+            });
+            videoSuggestions.classList.add('active');
+        }
+
+        function chooseMedia(value, title = '') {
             const media = getMediaFromUrl(value);
-            if (!media) return showNotice('Paste a YouTube link or a direct .mp4, .webm, .ogg, or .m3u8 URL.', true);
+            if (!media) {
+                const match = catalogMatches(value)[0];
+                if (match?.trailer) return chooseMedia(match.trailer, match.title);
+                return showNotice('Movie not found in the catalog. Paste a YouTube link or choose a listed movie.', true);
+            }
             socket.emit('media-change', media);
             videoSuggestions.classList.remove('active');
+            if (title) showNotice(`Playing ${title} for everyone in the room.`);
         }
 
         urlInput.addEventListener('focus', () => videoSuggestions.classList.add('active'));
+        urlInput.addEventListener('input', () => {
+            const value = urlInput.value.trim();
+            if (value && !getMediaFromUrl(value)) showMovieResults(value);
+        });
         document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
         urlInput.addEventListener('keydown', (event) => { if (event.key === 'Enter' && urlInput.value.trim()) chooseMedia(urlInput.value); });
         document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
+        voiceBtn.addEventListener('click', toggleVoice);
         document.querySelector('.chat-input').addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && event.currentTarget.value.trim()) {
                 socket.emit('chat-message', event.currentTarget.value);
@@ -1443,6 +1619,10 @@
             if (volume !== state.lastVolume) { state.lastVolume = volume; emitPlayback('volume'); }
         }, 1000);
         setInterval(() => socket.connected && socket.emit('request-sync'), 8000);
+
+        window.addEventListener('pagehide', () => {
+            if (state.voice.enabled) leaveVoice();
+        });
 
         initialiseRoom();
     </script>
