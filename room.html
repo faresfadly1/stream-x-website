@@ -1526,13 +1526,17 @@
         }
 
         function catalogMatches(query) {
-            const normalised = query.trim().toLowerCase();
+            const normaliseSearch = (value) => String(value || '')
+                .toLowerCase()
+                .replace(/[^\p{L}\p{N}]+/gu, ' ')
+                .trim();
+            const normalised = normaliseSearch(query);
             if (!normalised || typeof moviesDatabase === 'undefined') return [];
             return Object.values(moviesDatabase)
-                .filter((movie) => `${movie.title || ''} ${movie.alsoKnownAs || ''}`.toLowerCase().includes(normalised))
+                .filter((movie) => normaliseSearch(`${movie.title || ''} ${movie.alsoKnownAs || ''}`).includes(normalised))
                 .sort((first, second) => {
-                    const firstExact = first.title?.toLowerCase() === normalised;
-                    const secondExact = second.title?.toLowerCase() === normalised;
+                    const firstExact = normaliseSearch(first.title) === normalised;
+                    const secondExact = normaliseSearch(second.title) === normalised;
                     return Number(secondExact) - Number(firstExact);
                 })
                 .slice(0, 6);
