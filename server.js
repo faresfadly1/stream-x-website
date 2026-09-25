@@ -22,6 +22,7 @@ const io = new Server(server, {
 // pages, not for proxying or embedding copyrighted streams.
 const TMDB_READ_ACCESS_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN || '';
 const tmdbSearchCache = new Map();
+const openCatalogueCache = new Map();
 
 // These are full-length films in the public domain. Keeping an allow-list avoids
 // presenting unverified uploads as if they were licensed for streaming.
@@ -62,7 +63,7 @@ function movieStreamUrl(movie) {
 }
 
 function normaliseSearch(value) {
-    return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
 function matchesMovie(movie, query) {
@@ -120,6 +121,58 @@ async function searchTmdbMovies(query) {
     }
 }
 
+// Wikidata's public entity-search API needs neither an account nor an API key.
+// It supplies discovery data only; copyrighted streams are never proxied by us.
+async function searchOpenFilmCatalogue(query) {
+    if (query.length < 2) return [];
+    const cacheKey = query.toLowerCase();
+    const cached = openCatalogueCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.results;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    try {
+        const url = new URL('https://www.wikidata.org/w/api.php');
+        url.search = new URLSearchParams({
+            action: 'wbsearchentities',
+            search: query,
+            language: /[\u0600-\u06FF]/.test(query) ? 'ar' : 'en',
+            uselang: 'en',
+            type: 'item',
+            limit: '20',
+            format: 'json',
+            origin: '*'
+        });
+        const catalogueResponse = await fetch(url, {
+            headers: { accept: 'application/json', 'user-agent': 'StreamX legal film discovery' },
+            signal: controller.signal
+        });
+        if (!catalogueResponse.ok) return [];
+        const payload = await catalogueResponse.json();
+        const filmPattern = /\b(film|movie|animated|documentary|cinema)\b|فيلم|سينمائي/i;
+        const results = (payload.search || [])
+            .filter((item) => filmPattern.test(item.description || ''))
+            .slice(0, 12)
+            .map((item) => ({
+                id: `wikidata-${item.id}`,
+                kind: 'legal-provider',
+                title: item.label || query,
+                year: (item.description || '').match(/\b(?:18|19|20)\d{2}\b/)?.[0] || '',
+                description: item.description || 'Film catalogue record',
+                poster: '',
+                // This is a normal provider-discovery link, not a stream or an embed.
+                watchUrl: `https://www.justwatch.com/eg/search?q=${encodeURIComponent(item.label || query)}`,
+                actionLabel: 'Find legal streaming options'
+            }));
+        openCatalogueCache.set(cacheKey, { results, expiresAt: Date.now() + 15 * 60 * 1000 });
+        return results;
+    } catch (_) {
+        return [];
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 app.use((request, response, next) => {
     const origin = request.headers.origin;
     if (origin && allowedOrigins.has(origin)) response.setHeader('Access-Control-Allow-Origin', origin);
@@ -141,11 +194,21 @@ app.get('/api/legal-movies', async (request, response) => {
         .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
         .map(publicMovieResult);
-    const catalogueResults = await searchTmdbMovies(rawQuery);
+    const [tmdbResults, openCatalogueResults] = await Promise.all([
+        searchTmdbMovies(rawQuery),
+        searchOpenFilmCatalogue(rawQuery)
+    ]);
+    const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
+    const catalogueResults = [...tmdbResults, ...openCatalogueResults].filter((movie) => {
+        const key = normaliseSearch(movie.title);
+        if (knownTitles.has(key)) return false;
+        knownTitles.add(key);
+        return true;
+    });
     response.json({
         results: [...publicResults, ...catalogueResults],
-        catalogueEnabled: Boolean(TMDB_READ_ACCESS_TOKEN),
-        message: TMDB_READ_ACCESS_TOKEN ? undefined : 'Legal full movies are ready. Add TMDB_READ_ACCESS_TOKEN on the server to search the larger legal discovery catalogue.'
+        catalogueEnabled: true,
+        message: 'Searches the free open film catalogue. Full room playback is limited to public-domain or licensed video.'
     });
 });
 app.use(express.static(path.join(__dirname)));

@@ -1533,7 +1533,9 @@
                 result.className = 'suggestion-item';
                 result.style.width = '100%';
                 result.innerHTML = `<img class="suggestion-thumbnail" alt=""><div class="suggestion-info"><div class="suggestion-title"></div><div class="suggestion-meta"></div></div>`;
-                result.querySelector('img').src = movie.poster || '';
+                const thumbnail = result.querySelector('img');
+                if (movie.poster) thumbnail.src = movie.poster;
+                else thumbnail.hidden = true;
                 result.querySelector('.suggestion-title').textContent = movie.title;
                 const subtitle = movie.kind === 'playable'
                     ? `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`

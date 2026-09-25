@@ -29,9 +29,9 @@ Version Control: Git/GitHub
 
 ## Legal movie catalogue setup
 
-The built-in Watch Together search includes verified public-domain full films, which can be played and synchronized for every member of a room. To search a broad catalogue of film titles and open official viewing options, create a TMDB API Read Access Token and add it to the Render service as `TMDB_READ_ACCESS_TOKEN`.
+The built-in Watch Together search includes verified public-domain full films, which can be played and synchronized for every member of a room. A free open catalogue search (Wikidata) is enabled by default for broad title discovery and links each commercial result to legal provider search options. No account, token, payment, or card is required.
 
-The token stays on the server and is never sent to visitors. Copyrighted titles open their official provider options; StreamX does not proxy, embed, or redistribute them. Each viewer needs their own subscription, rental, or purchase where required.
+Copyrighted titles open their legal provider options; StreamX does not proxy, embed, or redistribute them. Each viewer needs their own subscription, rental, or purchase where required. `TMDB_READ_ACCESS_TOKEN` remains an optional server-only upgrade for richer posters and metadata where its terms fit the project.
 
 📁 Project Structure
 stream-x-website/
