@@ -1595,10 +1595,10 @@
             await searchFullMovies(value);
             const playable = movieResults.find((movie) => movie.kind === 'playable');
             if (playable) chooseMedia(playable.url, playable.title);
-            else if (movieResults[0]?.watchUrl) {
-                window.open(movieResults[0].watchUrl, '_blank', 'noopener,noreferrer');
-                showNotice('Official viewing options opened. Full room sync is available for public-domain or licensed direct video.');
-            } else showNotice('No legal match found. Paste a licensed video link instead.', true);
+            else if (movieResults.length) {
+                videoSuggestions.classList.add('active');
+                showNotice('Choose the matching title from the legal results.');
+            } else showNotice('No legal match found. Try the title without extra words, or paste a licensed video link instead.', true);
         });
         document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));

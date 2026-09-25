@@ -66,6 +66,13 @@ function normaliseSearch(value) {
     return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
+function filmTitleQuery(value) {
+    return String(value || '')
+        .replace(/(?:^|\s)(?:movie|film|فيلم|فلم)(?=\s|$)/giu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function matchesMovie(movie, query) {
     if (!query) return true;
     const searchable = normaliseSearch(`${movie.title} ${movie.year} ${movie.description}`);
@@ -192,14 +199,15 @@ app.get('/api/free-movies', (request, response) => {
 });
 app.get('/api/legal-movies', async (request, response) => {
     const rawQuery = String(request.query.q || '').trim().slice(0, 80);
-    const query = normaliseSearch(rawQuery);
+    const lookupQuery = filmTitleQuery(rawQuery);
+    const query = normaliseSearch(lookupQuery);
     const publicResults = FREE_FULL_MOVIES
         .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
         .map(publicMovieResult);
     const [tmdbResults, openCatalogueResults] = await Promise.all([
-        searchTmdbMovies(rawQuery),
-        searchOpenFilmCatalogue(rawQuery)
+        searchTmdbMovies(lookupQuery),
+        searchOpenFilmCatalogue(lookupQuery)
     ]);
     const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
     const catalogueResults = [...tmdbResults, ...openCatalogueResults].filter((movie) => {
