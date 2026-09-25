@@ -216,6 +216,14 @@ io.on('connection', (socket) => {
         room.users = room.users.filter((user) => user.id !== socket.id);
         room.users.push({ id: socket.id, username: socket.data.username });
         publishRoomState(roomId, room);
+        // Everyone in a room is an audio listener by default. Existing speakers
+        // are asked to create a WebRTC connection to the newcomer; no microphone
+        // permission is needed to receive audio.
+        for (const peerId of io.sockets.adapter.rooms.get(roomId) || []) {
+            if (peerId === socket.id) continue;
+            const peer = io.sockets.sockets.get(peerId);
+            if (peer?.data.voiceActive) peer.emit('voice-peer-joined', socket.id);
+        }
         socket.to(roomId).emit('notice', `${socket.data.username} joined the room`);
     });
 
@@ -268,6 +276,7 @@ io.on('connection', (socket) => {
     });
 
     // WebRTC signalling only. Audio itself travels peer-to-peer and is never stored on this server.
+    // A participant may listen without enabling their microphone.
     socket.on('voice-join', () => {
         const roomId = socket.data.roomId;
         const members = io.sockets.adapter.rooms.get(roomId);
@@ -275,8 +284,9 @@ io.on('connection', (socket) => {
         socket.data.voiceActive = true;
         for (const peerId of members) {
             if (peerId === socket.id) continue;
-            const peer = io.sockets.sockets.get(peerId);
-            if (peer?.data.voiceActive) socket.emit('voice-peer-joined', peerId);
+            // The speaker initiates connections to every listener. If a listener
+            // later turns on their mic, this also renegotiates that same channel.
+            socket.emit('voice-peer-joined', peerId);
         }
         socket.to(roomId).emit('voice-presence', { id: socket.id, active: true });
     });
@@ -286,12 +296,18 @@ io.on('connection', (socket) => {
         socket.data.voiceActive = false;
         socket.to(socket.data.roomId).emit('voice-peer-left', socket.id);
         socket.to(socket.data.roomId).emit('voice-presence', { id: socket.id, active: false });
+        // Keep the former speaker as a listener: every remaining speaker opens a
+        // fresh receive channel after the old bidirectional one is closed.
+        for (const peerId of io.sockets.adapter.rooms.get(socket.data.roomId) || []) {
+            const peer = io.sockets.sockets.get(peerId);
+            if (peerId !== socket.id && peer?.data.voiceActive) peer.emit('voice-peer-joined', socket.id);
+        }
     });
 
     socket.on('voice-signal', ({ target, signal } = {}) => {
         const roomId = socket.data.roomId;
         const recipient = io.sockets.sockets.get(target);
-        if (!roomId || !recipient || recipient.data.roomId !== roomId || !recipient.data.voiceActive) return;
+        if (!roomId || !recipient || recipient.data.roomId !== roomId) return;
         if (!signal || typeof signal !== 'object' || JSON.stringify(signal).length > 16000) return;
         recipient.emit('voice-signal', { from: socket.id, signal });
     });

@@ -670,7 +670,7 @@
         <div class="header-actions">
             <span class="connection-status" id="connectionStatus" role="status">Connecting…</span>
             <button class="btn voice-btn" id="voiceBtn" type="button" aria-pressed="false">
-                <i class="fas fa-microphone"></i> Voice off
+                <i class="fas fa-microphone"></i> Mic off
             </button>
             <button class="btn btn-primary">
                 <i class="fas fa-plus"></i> New Room
@@ -1185,9 +1185,11 @@
         });
         socket.on('media-change', ({ media, playback }) => loadMedia(media, playback));
         socket.on('playback-action', ({ playback }) => applyPlayback(playback));
-        socket.on('voice-peer-joined', (peerId) => state.voice.enabled && createVoicePeer(peerId, true));
+        // A microphone is optional. Every room member accepts incoming WebRTC
+        // audio, while Voice on only controls whether their own mic is sent.
+        socket.on('voice-peer-joined', (peerId) => createVoicePeer(peerId, true));
         socket.on('voice-peer-left', (peerId) => removeVoicePeer(peerId));
-        socket.on('voice-signal', ({ from, signal }) => state.voice.enabled && handleVoiceSignal(from, signal));
+        socket.on('voice-signal', ({ from, signal }) => handleVoiceSignal(from, signal));
 
         window.onYouTubeIframeAPIReady = () => { state.youtubeReady = true; };
 
@@ -1383,8 +1385,8 @@
             voiceBtn.classList.toggle('active', active);
             voiceBtn.setAttribute('aria-pressed', String(active));
             voiceBtn.innerHTML = active
-                ? '<i class="fas fa-microphone"></i> Voice on'
-                : '<i class="fas fa-microphone-slash"></i> Voice off';
+                ? '<i class="fas fa-microphone"></i> Mic on'
+                : '<i class="fas fa-microphone-slash"></i> Mic off';
         }
 
         async function toggleVoice() {
@@ -1407,7 +1409,7 @@
                 state.voice.enabled = true;
                 updateVoiceButton();
                 socket.emit('voice-join');
-                showNotice('Voice chat is on. Your audio is encrypted peer-to-peer.');
+                showNotice('Voice is on. Everyone in the room can hear you; they only need Voice on to speak back.');
             } catch (error) {
                 showNotice(error.name === 'NotAllowedError' ? 'Allow microphone access to join voice chat.' : 'Could not start voice chat.', true);
             }
@@ -1423,12 +1425,40 @@
             };
         }
 
+        function addLocalAudio(connection) {
+            if (!state.voice.stream) return false;
+            const senderTrackIds = new Set(connection.getSenders().map((sender) => sender.track?.id).filter(Boolean));
+            let added = false;
+            state.voice.stream.getTracks().forEach((track) => {
+                if (!senderTrackIds.has(track.id)) {
+                    connection.addTrack(track, state.voice.stream);
+                    added = true;
+                }
+            });
+            return added;
+        }
+
+        function sendVoiceOffer(peerId, peer) {
+            if (peer.offering || peer.connection.signalingState !== 'stable') return;
+            peer.offering = true;
+            peer.connection.createOffer()
+                .then((offer) => peer.connection.setLocalDescription(offer))
+                .then(() => socket.emit('voice-signal', { target: peerId, signal: { description: peer.connection.localDescription } }))
+                .catch(() => removeVoicePeer(peerId))
+                .finally(() => { peer.offering = false; });
+        }
+
         function createVoicePeer(peerId, initiator) {
-            if (state.voice.peers.has(peerId) || !state.voice.stream) return state.voice.peers.get(peerId)?.connection;
+            const existingPeer = state.voice.peers.get(peerId);
+            if (existingPeer) {
+                const addedAudio = addLocalAudio(existingPeer.connection);
+                if (initiator && (addedAudio || !existingPeer.connection.remoteDescription)) sendVoiceOffer(peerId, existingPeer);
+                return existingPeer.connection;
+            }
             const connection = new RTCPeerConnection(voiceConfiguration());
-            const peer = { connection, pendingCandidates: [], audio: null };
+            const peer = { connection, pendingCandidates: [], audio: null, offering: false };
             state.voice.peers.set(peerId, peer);
-            state.voice.stream.getTracks().forEach((track) => connection.addTrack(track, state.voice.stream));
+            addLocalAudio(connection);
             connection.onicecandidate = ({ candidate }) => {
                 if (candidate) socket.emit('voice-signal', { target: peerId, signal: { candidate } });
             };
@@ -1441,17 +1471,13 @@
                 audio.dataset.peerId = peerId;
                 audio.srcObject = stream;
                 document.body.appendChild(audio);
+                audio.play().catch(() => showNotice('Tap the page once to start room audio in this browser.', true));
                 peer.audio = audio;
             };
             connection.onconnectionstatechange = () => {
                 if (['failed', 'closed'].includes(connection.connectionState)) removeVoicePeer(peerId);
             };
-            if (initiator) {
-                connection.createOffer()
-                    .then((offer) => connection.setLocalDescription(offer))
-                    .then(() => socket.emit('voice-signal', { target: peerId, signal: { description: connection.localDescription } }))
-                    .catch(() => removeVoicePeer(peerId));
-            }
+            if (initiator) sendVoiceOffer(peerId, peer);
             return connection;
         }
 
