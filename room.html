@@ -1592,6 +1592,9 @@
             if (event.key !== 'Enter' || !urlInput.value.trim()) return;
             const value = urlInput.value.trim();
             if (getMediaFromUrl(value)) return chooseMedia(value);
+            // Prevent the debounced input search from invalidating this Enter
+            // search while it is awaiting its response.
+            clearTimeout(searchTimer);
             await searchFullMovies(value);
             const playable = movieResults.find((movie) => movie.kind === 'playable');
             if (playable) chooseMedia(playable.url, playable.title);
