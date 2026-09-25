@@ -207,7 +207,9 @@ async function searchWikipediaFilms(query) {
     try {
         const url = new URL(`https://${language}.wikipedia.org/w/api.php`);
         url.search = new URLSearchParams({
-            action: 'query', list: 'search', srsearch: query, srnamespace: '0',
+            // Bias even ambiguous one-word titles (such as "IT") toward film
+            // pages instead of general terms, people, or technology articles.
+            action: 'query', list: 'search', srsearch: `${query} ${language === 'ar' ? 'فيلم' : 'film'}`, srnamespace: '0',
             srlimit: '30', format: 'json', origin: '*'
         });
         const wikipediaResponse = await fetch(url, {
