@@ -1542,7 +1542,12 @@
         urlInput.addEventListener('input', () => {
             const value = urlInput.value.trim();
             clearTimeout(searchTimer);
-            if (!getMediaFromUrl(value)) searchTimer = setTimeout(() => searchFullMovies(value), 200);
+            if (getMediaFromUrl(value)) {
+                searchRequest += 1;
+                videoSuggestions.classList.remove('active');
+            } else {
+                searchTimer = setTimeout(() => searchFullMovies(value), 200);
+            }
         });
         document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
         urlInput.addEventListener('keydown', async (event) => {
@@ -1588,10 +1593,12 @@
         };
 
         setInterval(() => {
-            if (!state.ready || Date.now() < state.suppressUntil || !isPlaying()) return;
+            if (!state.ready || Date.now() < state.suppressUntil) return;
             const now = playerTime();
-            if (Math.abs(now - state.lastTime - 1) > 1.2) emitPlayback('seek');
-            state.lastTime = now;
+            if (isPlaying()) {
+                if (Math.abs(now - state.lastTime - 1) > 1.2) emitPlayback('seek');
+                state.lastTime = now;
+            }
             const volume = playerVolume();
             if (volume !== state.lastVolume) { state.lastVolume = volume; emitPlayback('volume'); }
         }, 1000);
