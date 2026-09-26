@@ -51,15 +51,6 @@
         <div class="status" id="status" role="status"></div>
         <div id="results" class="results" aria-live="polite"></div>
         <div class="player" id="player"><div class="empty-player">Choose a title to start direct playback.</div></div>
-        <section class="quick" aria-label="Direct-play classics">
-            <h2>Start instantly</h2>
-            <a href="legal-player.html?movie=night-of-the-living-dead">Night of the Living Dead</a>
-            <a href="legal-player.html?movie=his-girl-friday">His Girl Friday</a>
-            <a href="legal-player.html?movie=the-general">The General</a>
-            <a href="legal-player.html?movie=detour">Detour</a>
-            <a href="legal-player.html?movie=last-man-on-earth">The Last Man on Earth</a>
-            <a href="legal-player.html?movie=phantom-of-the-opera">The Phantom of the Opera</a>
-        </section>
     </main>
     <script>
         const SERVER_URL = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://localhost:3000' : 'https://stream-x-backend.onrender.com';
@@ -70,14 +61,6 @@
         const statusElement = document.getElementById('status');
         const resultsElement = document.getElementById('results');
         const playerElement = document.getElementById('player');
-        const legacyTitles = {
-            'night-of-the-living-dead': 'Night of the Living Dead',
-            'his-girl-friday': 'His Girl Friday',
-            'the-general': 'The General',
-            detour: 'Detour',
-            'last-man-on-earth': 'The Last Man on Earth',
-            'phantom-of-the-opera': 'The Phantom of the Opera'
-        };
         let searchRequest = 0;
 
         function normalise(value) {
@@ -219,7 +202,7 @@
             searchDirectMovies(queryInput.value, false);
         });
 
-        const requestedTitle = queryParams.get('title') || legacyTitles[queryParams.get('movie')] || '';
+        const requestedTitle = queryParams.get('title') || '';
         const requestedPlayback = queryParams.get('play');
         if (requestedPlayback) loadPlayback(requestedPlayback, requestedTitle);
         else if (requestedTitle) searchDirectMovies(requestedTitle, true);
