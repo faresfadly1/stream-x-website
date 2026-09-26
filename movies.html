@@ -1588,32 +1588,31 @@
 
     <!-- Hero Section -->
     <section class="hero">
-        <img src="stranger-things.jpg" alt="Stranger Things Background" class="hero-background">
-        <!-- Save your Stranger Things image as 'stranger-things.jpg' in the same folder as this HTML file -->
+        <img src="stranger-things.jpg" alt="Stream X cinema background" class="hero-background">
         <div class="hero-content">
-            <div class="hero-badge">#1 in Trending</div>
-            <h2>Stranger Things</h2>
-            <p>Discover thousands of movies and TV shows from all around the world. Unlimited entertainment at your fingertips with the highest quality streaming.</p>
+            <div class="hero-badge">DIRECT PLAY</div>
+            <h2>Free legal movies, played here</h2>
+            <p>Open a verified public-domain or Creative Commons full movie directly inside Stream X. Search the title you want, then press play.</p>
             <div class="hero-buttons">
-                <a href="legal-player.html?movie=night-of-the-living-dead" class="btn btn-primary"><i class="fas fa-play"></i> Watch Now</a>
+                <a href="legal-player.html" class="btn btn-primary"><i class="fas fa-play"></i> Watch Now</a>
                 <a href="#" class="btn btn-secondary"><i class="fas fa-info-circle"></i> More Info</a>
             </div>
             <div class="hero-info">
                 <div class="hero-info-item">
                     <i class="fas fa-star"></i>
-                    <span>9.5/10</span>
+                    <span>Verified sources</span>
                 </div>
                 <div class="hero-info-item">
                     <i class="fas fa-calendar-alt"></i>
-                    <span>2025</span>
+                    <span>Public domain &amp; CC</span>
                 </div>
                 <div class="hero-info-item">
                     <i class="fas fa-clock"></i>
-                    <span>2h 35m</span>
+                    <span>Full-length</span>
                 </div>
                 <div class="hero-info-item">
                     <i class="fas fa-tag"></i>
-                    <span>Action, Adventure</span>
+                    <span>Direct in Stream X</span>
                 </div>
             </div>
             <div class="hero-rating">
@@ -2189,13 +2188,14 @@
             const ratingSpan = document.querySelector('.modal-header-content .rating span');
             ratingSpan.textContent = `${movie.rating}/10 (${Math.floor(Math.random() * 500 + 100)}K Reviews)`;
             
-            // Movies stays separate from Watch Together. This page exposes
-            // details and the official trailer only; it never creates a room.
+            // A card now opens Stream X's direct player. The player itself
+            // verifies that a legal, embeddable full source exists before it
+            // loads anything; trailers are not used as a substitute.
             const watchNowBtn = document.querySelector('.modal-header-content .actions .btn-primary');
             watchNowBtn.onclick = function() {
-                const trailer = document.querySelector('.modal-main iframe');
-                trailer?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                openDirectPlayer(movie);
             };
+            watchNowBtn.innerHTML = '<i class="fas fa-play"></i> Watch Now';
             
             // Update overview
             document.querySelector('.modal-main p').textContent = movie.overview;
@@ -2344,6 +2344,13 @@
             particlesContainer.appendChild(particle);
         }
 
+        function openDirectPlayer(movie) {
+            if (!movie?.title) return;
+            const params = new URLSearchParams({ title: movie.title });
+            if (movie.tmdbId) params.set('tmdb', movie.tmdbId);
+            window.location.href = `legal-player.html?${params.toString()}`;
+        }
+
         // Movie Card Hover Effect
         const movieCards = document.querySelectorAll('.movie-card');
         
@@ -2360,13 +2367,12 @@
                 info.style.transform = 'translateY(20px)';
             });
             
-            // Open modal on click
+            // Pressing a movie goes straight to the direct player. If Stream X
+            // has no verified embeddable rights for it, that page says so
+            // instead of silently replacing it with a trailer.
             card.addEventListener('click', function() {
                 const movieId = this.getAttribute('data-movie-id');
-                updateMovieModal(movieId);
-                const modal = document.getElementById('movieModal');
-                modal.classList.add('active');
-                document.body.style.overflow = 'hidden';
+                openDirectPlayer(moviesDatabase[movieId]);
             });
         });
 
@@ -2404,10 +2410,7 @@
         topMovieItems.forEach(item => {
             item.addEventListener('click', function() {
                 const movieId = this.getAttribute('data-movie-id');
-                updateMovieModal(movieId);
-                const modal = document.getElementById('movieModal');
-                modal.classList.add('active');
-                document.body.style.overflow = 'hidden';
+                openDirectPlayer(moviesDatabase[movieId]);
             });
         });
     </script>

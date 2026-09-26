@@ -6,16 +6,33 @@
     <title>Stream X Player</title>
     <style>
         :root { color-scheme: dark; font-family: Arial, sans-serif; }
+        * { box-sizing: border-box; }
         body { margin: 0; min-height: 100vh; background: #080d12; color: #f5f7fa; }
         header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px clamp(18px, 5vw, 72px); border-bottom: 1px solid #27313d; }
         a { color: #21d4fd; text-decoration: none; font-weight: 700; }
-        main { width: min(1200px, 92vw); margin: 38px auto; }
+        main { width: min(1200px, 92vw); margin: 38px auto 64px; }
         .tag { display: inline-block; margin-bottom: 10px; color: #0f1820; background: #22d3ee; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; }
         h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 44px); }
         p { color: #b8c5d1; line-height: 1.55; }
+        .search { display: flex; gap: 10px; margin: 24px 0 10px; }
+        input { min-width: 0; flex: 1; padding: 15px 17px; border: 1px solid #354452; border-radius: 11px; background: #111a23; color: #fff; font-size: 16px; }
+        button { cursor: pointer; font: inherit; }
+        .search button { padding: 0 19px; border: 0; border-radius: 11px; background: #22d3ee; color: #071015; font-weight: 800; }
+        .status { min-height: 24px; margin: 10px 0; color: #a9bbc9; }
         .player { margin-top: 22px; background: #000; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px #0008; }
-        video { display: block; width: 100%; max-height: 72vh; background: #000; }
-        .error { padding: 28px; border: 1px solid #5c2934; background: #281319; border-radius: 12px; }
+        video, iframe { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 72vh; border: 0; background: #000; }
+        .empty-player, .error { padding: 38px 26px; border: 1px solid #293946; border-radius: 16px; background: #101820; }
+        .error { border-color: #5c2934; background: #281319; }
+        .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 16px; }
+        .result { min-height: 96px; padding: 14px; text-align: left; color: #f5f7fa; border: 1px solid #314252; border-radius: 12px; background: #111a23; }
+        .result:hover, .result:focus-visible { border-color: #22d3ee; outline: 0; background: #162532; }
+        .result strong, .result span { display: block; }
+        .result span { margin-top: 6px; color: #a8bac8; font-size: 13px; }
+        .quick { margin-top: 28px; }
+        .quick h2 { font-size: 18px; }
+        .quick a { display: inline-block; margin: 0 8px 8px 0; padding: 9px 12px; border: 1px solid #365165; border-radius: 9px; color: #d9f6ff; font-size: 14px; }
+        .provider-link { display: inline-block; margin-top: 4px; padding: 11px 14px; border-radius: 9px; background: #1c6a51; color: #fff; }
+        @media (max-width: 560px) { header { align-items: flex-start; flex-direction: column; } .search { flex-direction: column; } .search button { padding: 14px; } }
     </style>
 </head>
 <body>
@@ -24,38 +41,188 @@
         <a href="watchtogether.html">Watch Together</a>
     </header>
     <main>
-        <span class="tag">FREE &amp; LEGAL · PUBLIC DOMAIN</span>
-        <h1 id="title">Night of the Living Dead</h1>
-        <p id="description">A full-length public-domain classic, played directly inside Stream X.</p>
-        <div class="player" id="player"><video id="video" controls autoplay playsinline preload="metadata"></video></div>
+        <span class="tag">FREE &amp; LEGAL · DIRECT PLAYBACK</span>
+        <h1 id="title">Choose a legal full movie</h1>
+        <p id="description">Search Stream X’s verified public-domain and Creative Commons full-length sources. A valid result plays here, directly inside Stream X.</p>
+        <form class="search" id="searchForm">
+            <input id="titleQuery" type="search" autocomplete="off" placeholder="Search a title that can play directly" aria-label="Search direct-play movies">
+            <button type="submit">Search</button>
+        </form>
+        <div class="status" id="status" role="status"></div>
+        <div id="results" class="results" aria-live="polite"></div>
+        <div class="player" id="player"><div class="empty-player">Choose a title to start direct playback.</div></div>
+        <section class="quick" aria-label="Direct-play classics">
+            <h2>Start instantly</h2>
+            <a href="legal-player.html?movie=night-of-the-living-dead">Night of the Living Dead</a>
+            <a href="legal-player.html?movie=his-girl-friday">His Girl Friday</a>
+            <a href="legal-player.html?movie=the-general">The General</a>
+            <a href="legal-player.html?movie=detour">Detour</a>
+            <a href="legal-player.html?movie=last-man-on-earth">The Last Man on Earth</a>
+            <a href="legal-player.html?movie=phantom-of-the-opera">The Phantom of the Opera</a>
+        </section>
     </main>
     <script>
-        const movies = {
-            'night-of-the-living-dead': {
-                title: 'Night of the Living Dead',
-                description: '1968 · Horror · Full public-domain movie',
-                url: 'https://archive.org/download/night-of-the-living-dead_202409/Night%20Of%20The%20Living%20Dead.mp4'
-            },
-            'his-girl-friday': {
-                title: 'His Girl Friday',
-                description: '1940 · Comedy · Full public-domain movie',
-                url: 'https://archive.org/download/HisGirlFriday1940/seqhisgirlfridayfull1d_512kb.mp4'
-            },
-            'the-general': {
-                title: 'The General',
-                description: '1926 · Comedy · Full public-domain movie',
-                url: 'https://archive.org/download/the-general-1926_202506/The%20General%20%281926%29.mp4'
-            }
+        const SERVER_URL = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://localhost:3000' : 'https://stream-x-backend.onrender.com';
+        const queryParams = new URLSearchParams(location.search);
+        const titleElement = document.getElementById('title');
+        const descriptionElement = document.getElementById('description');
+        const queryInput = document.getElementById('titleQuery');
+        const statusElement = document.getElementById('status');
+        const resultsElement = document.getElementById('results');
+        const playerElement = document.getElementById('player');
+        const legacyTitles = {
+            'night-of-the-living-dead': 'Night of the Living Dead',
+            'his-girl-friday': 'His Girl Friday',
+            'the-general': 'The General',
+            detour: 'Detour',
+            'last-man-on-earth': 'The Last Man on Earth',
+            'phantom-of-the-opera': 'The Phantom of the Opera'
         };
-        const movie = movies[new URLSearchParams(location.search).get('movie')] || movies['night-of-the-living-dead'];
-        document.title = `${movie.title} · Stream X`;
-        document.getElementById('title').textContent = movie.title;
-        document.getElementById('description').textContent = movie.description;
-        const video = document.getElementById('video');
-        video.src = movie.url;
-        video.addEventListener('error', () => {
-            document.getElementById('player').innerHTML = '<div class="error">This legal source is temporarily unavailable. Please try another free title from Movies.</div>';
+        let searchRequest = 0;
+
+        function normalise(value) {
+            return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        }
+
+        function setStatus(message) {
+            statusElement.textContent = message;
+        }
+
+        function clearResults() {
+            resultsElement.replaceChildren();
+        }
+
+        function setError(message) {
+            playerElement.replaceChildren();
+            const error = document.createElement('div');
+            error.className = 'error';
+            error.textContent = message;
+            playerElement.appendChild(error);
+        }
+
+        function playMedia(playback) {
+            const { media, title, description, source } = playback;
+            if (!media || !title) return setError('The selected source is not available for direct playback.');
+            document.title = `${title} · Stream X`;
+            titleElement.textContent = title;
+            descriptionElement.textContent = `${description || 'Legal full-length movie'}${source ? ` · Source: ${source}` : ''}`;
+            playerElement.replaceChildren();
+            if (media.type === 'vimeo') {
+                const iframe = document.createElement('iframe');
+                iframe.src = `https://player.vimeo.com/video/${encodeURIComponent(media.videoId)}?autoplay=1&dnt=1&title=0&byline=0&portrait=0`;
+                iframe.title = title;
+                iframe.allow = 'autoplay; fullscreen; picture-in-picture';
+                iframe.allowFullscreen = true;
+                playerElement.appendChild(iframe);
+                return;
+            }
+            if (media.type === 'video') {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.preload = 'metadata';
+                video.src = media.url;
+                video.addEventListener('error', () => setError('This legal source is temporarily unavailable. Search again or choose another result.'));
+                playerElement.appendChild(video);
+                video.play().catch(() => { /* Browsers can require a manual play after navigation. */ });
+                return;
+            }
+            setError('This source does not support direct playback in Stream X.');
+        }
+
+        async function loadPlayback(playbackId, searchTitle = '') {
+            if (!playbackId) return;
+            setStatus('Loading the direct player…');
+            try {
+                const response = await fetch(`${SERVER_URL}/api/playback/${encodeURIComponent(playbackId)}`);
+                if (!response.ok) throw new Error('expired');
+                const playback = await response.json();
+                playMedia(playback);
+                setStatus('Playing directly in Stream X.');
+                const params = new URLSearchParams();
+                params.set('play', playbackId);
+                if (searchTitle) params.set('title', searchTitle);
+                if (queryParams.get('tmdb')) params.set('tmdb', queryParams.get('tmdb'));
+                history.replaceState(null, '', `legal-player.html?${params.toString()}`);
+            } catch (_) {
+                setStatus('That direct source expired. Searching for a fresh verified source…');
+                if (searchTitle) searchDirectMovies(searchTitle, true);
+                else setError('This direct source expired. Search for the title again.');
+            }
+        }
+
+        function showResults(movies) {
+            clearResults();
+            movies.forEach((movie) => {
+                if (!movie.playbackId) return;
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'result';
+                const name = document.createElement('strong');
+                name.textContent = movie.title;
+                const detail = document.createElement('span');
+                detail.textContent = `${movie.year || ''}${movie.year ? ' · ' : ''}${movie.actionLabel || 'Full movie'}`;
+                button.append(name, detail);
+                button.addEventListener('click', () => loadPlayback(movie.playbackId, queryInput.value.trim()));
+                resultsElement.appendChild(button);
+            });
+        }
+
+        function showNoDirectMatch(title, tmdbId) {
+            clearResults();
+            titleElement.textContent = title;
+            descriptionElement.textContent = 'No verified source is licensed for direct playback in Stream X for this title.';
+            setError('This title cannot be played directly here without a distribution or embedding licence. Stream X will not use unverified uploads.');
+            if (tmdbId) {
+                const link = document.createElement('a');
+                link.className = 'provider-link';
+                link.href = `movie-details.html?tmdb=${encodeURIComponent(tmdbId)}`;
+                link.textContent = 'See official legal viewing options';
+                resultsElement.appendChild(link);
+            }
+        }
+
+        async function searchDirectMovies(rawTitle, autoPlayExact = false) {
+            const title = rawTitle.trim();
+            if (title.length < 2) return;
+            const requestId = ++searchRequest;
+            queryInput.value = title;
+            clearResults();
+            setStatus('Finding verified direct-play sources…');
+            try {
+                const response = await fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(title)}`);
+                if (!response.ok) throw new Error('search failed');
+                const data = await response.json();
+                if (requestId !== searchRequest) return;
+                const movies = (data.results || []).filter((movie) => movie.playbackId);
+                const exact = movies.find((movie) => normalise(movie.title) === normalise(title));
+                if (autoPlayExact && exact) return loadPlayback(exact.playbackId, title);
+                if (movies.length) {
+                    titleElement.textContent = 'Choose a direct-play source';
+                    descriptionElement.textContent = 'Each result below is a verified full-length source that plays inside Stream X.';
+                    setStatus('Choose a result to play it directly.');
+                    showResults(movies);
+                    return;
+                }
+                showNoDirectMatch(title, queryParams.get('tmdb'));
+                setStatus('No verified direct-play source was found.');
+            } catch (_) {
+                if (requestId !== searchRequest) return;
+                setStatus('Direct-play search is temporarily unavailable.');
+                setError('Please try the title again in a moment.');
+            }
+        }
+
+        document.getElementById('searchForm').addEventListener('submit', (event) => {
+            event.preventDefault();
+            searchDirectMovies(queryInput.value, false);
         });
+
+        const requestedTitle = queryParams.get('title') || legacyTitles[queryParams.get('movie')] || '';
+        const requestedPlayback = queryParams.get('play');
+        if (requestedPlayback) loadPlayback(requestedPlayback, requestedTitle);
+        else if (requestedTitle) searchDirectMovies(requestedTitle, true);
     </script>
 </body>
 </html>

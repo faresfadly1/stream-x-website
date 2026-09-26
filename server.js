@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -29,6 +30,10 @@ const openCatalogueCache = new Map();
 const wikipediaSearchCache = new Map();
 const archiveMovieSearchCache = new Map();
 const vimeoMovieSearchCache = new Map();
+// Direct-player references are deliberately short-lived server records rather
+// than arbitrary URLs supplied by a browser.  A player can therefore load only
+// a source that was already verified by the legal movie search.
+const playbackMediaCache = new Map();
 
 // These are full-length films in the public domain. Keeping an allow-list avoids
 // presenting unverified uploads as if they were licensed for streaming.
@@ -100,6 +105,41 @@ function publicMovieResult(movie) {
 
 function archiveMovieStreamUrl(identifier, fileName) {
     return `https://archive.org/download/${encodeURIComponent(identifier)}/${encodeURIComponent(fileName)}`;
+}
+
+function mediaForPlayableMovie(movie) {
+    if (!movie || movie.kind !== 'playable' || typeof movie.url !== 'string') return null;
+    try {
+        const url = new URL(movie.url);
+        const vimeoId = (url.hostname === 'vimeo.com' || url.hostname.endsWith('.vimeo.com'))
+            ? url.pathname.match(/\/(\d+)(?:\/|$)/)?.[1]
+            : null;
+        if (vimeoId) return { type: 'vimeo', videoId: vimeoId };
+        const archiveHost = url.hostname === 'archive.org' || url.hostname.endsWith('.archive.org');
+        if (archiveHost && /\.(?:mp4|m4v|webm|ogg|m3u8)(?:$|[?#])/i.test(url.pathname + url.search)) {
+            return { type: 'video', url: url.href };
+        }
+    } catch (_) { /* A search result with a malformed URL is not playable. */ }
+    return null;
+}
+
+function attachPlaybackReference(movie) {
+    const media = mediaForPlayableMovie(movie);
+    if (!media) return movie;
+    const source = media.videoId || media.url;
+    const playbackId = crypto.createHash('sha256').update(`${media.type}:${source}`).digest('base64url').slice(0, 32);
+    const now = Date.now();
+    for (const [id, entry] of playbackMediaCache) {
+        if (entry.expiresAt <= now) playbackMediaCache.delete(id);
+    }
+    playbackMediaCache.set(playbackId, {
+        title: movie.title,
+        description: movie.description || '',
+        source: movie.source || 'Archive.org',
+        media,
+        expiresAt: now + 20 * 60 * 1000
+    });
+    return { ...movie, playbackId };
 }
 
 // Search an established public-domain collection and resolve an actual video
@@ -182,7 +222,7 @@ async function searchVimeoCreativeCommonsMovies(query) {
             sort: 'relevant',
             direction: 'desc',
             per_page: '30',
-            fields: 'uri,name,description,duration,link,license,pictures.sizes,embed.html,privacy.embed,user.name'
+            fields: 'uri,name,description,duration,link,license,pictures.sizes,embed.html,privacy.embed,privacy.view,user.name'
         });
         const vimeoResponse = await fetch(url, {
             headers: { Authorization: `Bearer ${VIMEO_ACCESS_TOKEN}`, accept: 'application/vnd.vimeo.*+json;version=3.4' },
@@ -196,7 +236,7 @@ async function searchVimeoCreativeCommonsMovies(query) {
         const results = (payload.data || [])
             .map((video) => ({ video, id: vimeoVideoId(video.uri) }))
             .filter(({ video, id }) => id && allowedLicenses.has(video.license) && Number(video.duration) >= 35 * 60)
-            .filter(({ video }) => video.privacy?.embed !== 'private' && video.embed?.html !== null)
+            .filter(({ video }) => video.privacy?.embed === 'public' && video.privacy?.view === 'anybody' && video.embed?.html !== null)
             .filter(({ video }) => {
                 const title = normaliseSearch(video.name);
                 return (title === titleQuery || title.startsWith(`${titleQuery} `)) && !notAFullMovie.test(video.name || '');
@@ -460,8 +500,23 @@ app.get('/api/free-movies', (request, response) => {
     const results = FREE_FULL_MOVIES
         .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
-        .map(publicMovieResult);
+        .map(publicMovieResult)
+        .map(attachPlaybackReference);
     response.json({ results });
+});
+app.get('/api/playback/:id', (request, response) => {
+    const playbackId = String(request.params.id || '');
+    const entry = playbackMediaCache.get(playbackId);
+    if (!entry || entry.expiresAt <= Date.now()) {
+        playbackMediaCache.delete(playbackId);
+        return response.status(404).json({ error: 'This playable source expired. Search for the title again.' });
+    }
+    response.json({
+        title: entry.title,
+        description: entry.description,
+        source: entry.source,
+        media: entry.media
+    });
 });
 app.get('/api/tmdb/movie/:id', async (request, response) => {
     const movieId = Number.parseInt(request.params.id, 10);
@@ -513,7 +568,7 @@ app.get('/api/legal-movies', async (request, response) => {
         return true;
     });
     response.json({
-        results: [...publicResults, ...archiveResults, ...vimeoPlayableResults],
+        results: [...publicResults, ...archiveResults, ...vimeoPlayableResults].map(attachPlaybackReference),
         message: 'Every result is a legal full movie that can play in this room.'
     });
 });

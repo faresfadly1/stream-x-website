@@ -2,6 +2,7 @@
 const moviesDatabase = {
     1: {
         title: "Dune: Part Two",
+        tmdbId: 693134,
         year: "2024",
         duration: "2h 46m",
         rating: "8.8",
@@ -56,6 +57,7 @@ const moviesDatabase = {
     },
     2: {
         title: "Oppenheimer",
+        tmdbId: 872585,
         year: "2023",
         duration: "3h",
         rating: "8.6",
@@ -110,6 +112,7 @@ const moviesDatabase = {
     },
     3: {
         title: "John Wick: Chapter 4",
+        tmdbId: 603692,
         year: "2023",
         duration: "2h 49m",
         rating: "7.8",
@@ -164,6 +167,7 @@ const moviesDatabase = {
     },
     4: {
         title: "Barbie",
+        tmdbId: 346698,
         year: "2023",
         duration: "1h 54m",
         rating: "7.0",
@@ -218,6 +222,7 @@ const moviesDatabase = {
     },
     5: {
         title: "Avatar: The Way of Water",
+        tmdbId: 76600,
         year: "2022",
         duration: "3h 12m",
         rating: "7.6",
@@ -272,6 +277,7 @@ const moviesDatabase = {
     },
     6: {
         title: "The Batman",
+        tmdbId: 414906,
         year: "2022",
         duration: "2h 56m",
         rating: "7.9",
@@ -326,6 +332,7 @@ const moviesDatabase = {
     },
     7: {
         title: "Top Gun: Maverick",
+        tmdbId: 361743,
         year: "2022",
         duration: "2h 10m",
         rating: "8.3",
@@ -380,6 +387,7 @@ const moviesDatabase = {
     },
     8: {
         title: "The Shawshank Redemption",
+        tmdbId: 278,
         year: "1994",
         duration: "2h 22m",
         rating: "9.3",
@@ -434,6 +442,7 @@ const moviesDatabase = {
     },
     9: {
         title: "The Godfather",
+        tmdbId: 238,
         year: "1972",
         duration: "2h 55m",
         rating: "9.2",
@@ -488,6 +497,7 @@ const moviesDatabase = {
     },
     10: {
         title: "The Dark Knight",
+        tmdbId: 155,
         year: "2008",
         duration: "2h 32m",
         rating: "9.0",
@@ -542,6 +552,7 @@ const moviesDatabase = {
     },
     11: {
         title: "Pulp Fiction",
+        tmdbId: 680,
         year: "1994",
         duration: "2h 34m",
         rating: "8.9",
@@ -596,6 +607,7 @@ const moviesDatabase = {
     },
     12: {
         title: "Fight Club",
+        tmdbId: 550,
         year: "1999",
         duration: "2h 19m",
         rating: "8.8",
