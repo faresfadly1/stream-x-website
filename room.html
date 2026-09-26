@@ -1146,7 +1146,8 @@
             : 'https://stream-x-backend.onrender.com';
         const state = {
             roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
-            lastTime: 0, lastVolume: 100, vimeoPlaying: false, youtubeVolumeTimer: null, audioUnlocked: false, autoplayMuted: false,
+            lastTime: 0, lastVolume: 100, vimeoPlaying: false, youtubeMonitorTimer: null,
+            youtubeObservedTime: 0, youtubeObservedAt: 0, audioUnlocked: false, autoplayMuted: false,
             voice: { enabled: false, stream: null, peers: new Map() }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1256,8 +1257,10 @@
 
         function resetPlayer() {
             if (state.player?.destroy) state.player.destroy();
-            if (state.youtubeVolumeTimer) clearInterval(state.youtubeVolumeTimer);
-            state.youtubeVolumeTimer = null;
+            if (state.youtubeMonitorTimer) clearInterval(state.youtubeMonitorTimer);
+            state.youtubeMonitorTimer = null;
+            state.youtubeObservedTime = 0;
+            state.youtubeObservedAt = 0;
             state.player = null;
             state.ready = false;
             state.autoplayMuted = false;
@@ -1306,16 +1309,32 @@
                             onReady: () => {
                                 state.ready = true;
                                 applyPlayback(playback);
-                                // The YouTube IFrame API has no volume-change event.
-                                // Polling only while this player exists keeps manual volume
-                                // changes in sync without broadcasting unchanged values.
-                                state.youtubeVolumeTimer = setInterval(() => {
-                                    if (!state.ready || state.media?.type !== 'youtube' || Date.now() < state.suppressUntil) return;
+                                // The YouTube IFrame API has no volume or seek event.
+                                // Watch for meaningful deltas only while this player exists.
+                                state.youtubeObservedTime = Number(state.player.getCurrentTime()) || 0;
+                                state.youtubeObservedAt = Date.now();
+                                state.youtubeMonitorTimer = setInterval(() => {
+                                    if (!state.ready || state.media?.type !== 'youtube') return;
+                                    const now = Date.now();
+                                    const currentTime = Number(state.player?.getCurrentTime?.()) || 0;
+                                    if (now < state.suppressUntil) {
+                                        state.youtubeObservedTime = currentTime;
+                                        state.youtubeObservedAt = now;
+                                        return;
+                                    }
                                     const volume = Math.round(Number(state.player?.getVolume?.()) || 0);
                                     if (volume !== state.lastVolume) {
                                         state.lastVolume = volume;
                                         emitPlayback('volume');
                                     }
+                                    const playing = state.player?.getPlayerState?.() === YT.PlayerState.PLAYING;
+                                    const expectedTime = state.youtubeObservedTime + (playing ? (now - state.youtubeObservedAt) / 1000 : 0);
+                                    if (Math.abs(currentTime - expectedTime) > 1.25) {
+                                        state.lastTime = currentTime;
+                                        emitPlayback('seek');
+                                    }
+                                    state.youtubeObservedTime = currentTime;
+                                    state.youtubeObservedAt = now;
                                 }, 350);
                             },
                             onStateChange: ({ data }) => onYouTubeState(data),
