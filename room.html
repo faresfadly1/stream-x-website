@@ -1650,9 +1650,10 @@
             relay.processor.onaudioprocess = ({ inputBuffer }) => {
                 if (!state.voice.enabled || !socket.connected) return;
                 const pcm = downsampleVoice(inputBuffer.getChannelData(0), context.sampleRate);
-                // Volatile drops a delayed packet instead of introducing an
-                // ever-growing delay when a connection is momentarily slow.
-                socket.volatile.emit('voice-audio', pcm.buffer);
+                // Do not mark voice packets volatile: on browsers that are
+                // temporarily using polling transport, volatile packets can be
+                // discarded before the next poll is writable, causing silence.
+                socket.emit('voice-audio', pcm.buffer);
             };
             relay.source.connect(relay.processor);
             relay.processor.connect(relay.silence);

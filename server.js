@@ -807,7 +807,9 @@ io.on('connection', (socket) => {
         // At 24 kHz mono PCM, a normal 4096-sample browser block is 4096 bytes.
         // Keep a firm bound so a client cannot use this event as arbitrary upload.
         if (!audio || audio.length < 2 || audio.length > 16384 || audio.length % 2) return;
-        socket.to(roomId).volatile.emit('voice-audio', { from: socket.id, data: audio });
+        // Deliver every audio block. `volatile` can drop every block while a
+        // polling client is between requests, which looks exactly like a mute.
+        socket.to(roomId).emit('voice-audio', { from: socket.id, data: audio });
     });
 
     socket.on('disconnect', () => {
