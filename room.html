@@ -1665,6 +1665,12 @@
                 appendSearchSection('YouTube full-length videos you can play in this room');
                 playable.forEach(appendMovieResult);
             }
+            if (catalogue.length && !playable.length) {
+                const status = document.createElement('div');
+                status.className = 'suggestion-status';
+                status.textContent = 'No embeddable, full-length Creative Commons video was found for this title on YouTube.';
+                videoSuggestions.appendChild(status);
+            }
             videoSuggestions.classList.toggle('active', catalogue.length + playable.length > 0);
         }
 
