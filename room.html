@@ -1146,7 +1146,7 @@
             : 'https://stream-x-backend.onrender.com';
         const state = {
             roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
-            lastTime: 0, lastVolume: 100, vimeoPlaying: false, audioUnlocked: false, autoplayMuted: false,
+            lastTime: 0, lastVolume: 100, vimeoPlaying: false, youtubeVolumeTimer: null, audioUnlocked: false, autoplayMuted: false,
             voice: { enabled: false, stream: null, peers: new Map() }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1256,6 +1256,8 @@
 
         function resetPlayer() {
             if (state.player?.destroy) state.player.destroy();
+            if (state.youtubeVolumeTimer) clearInterval(state.youtubeVolumeTimer);
+            state.youtubeVolumeTimer = null;
             state.player = null;
             state.ready = false;
             state.autoplayMuted = false;
@@ -1301,7 +1303,21 @@
                         // the player is muted.
                         playerVars: { autoplay: playback?.playing ? 1 : 0, playsinline: 1, rel: 0, enablejsapi: 1 },
                         events: {
-                            onReady: () => { state.ready = true; applyPlayback(playback); },
+                            onReady: () => {
+                                state.ready = true;
+                                applyPlayback(playback);
+                                // The YouTube IFrame API has no volume-change event.
+                                // Polling only while this player exists keeps manual volume
+                                // changes in sync without broadcasting unchanged values.
+                                state.youtubeVolumeTimer = setInterval(() => {
+                                    if (!state.ready || state.media?.type !== 'youtube' || Date.now() < state.suppressUntil) return;
+                                    const volume = Math.round(Number(state.player?.getVolume?.()) || 0);
+                                    if (volume !== state.lastVolume) {
+                                        state.lastVolume = volume;
+                                        emitPlayback('volume');
+                                    }
+                                }, 350);
+                            },
                             onStateChange: ({ data }) => onYouTubeState(data),
                             onError: () => showMediaError('This YouTube video cannot be played in an embedded room.')
                         }
