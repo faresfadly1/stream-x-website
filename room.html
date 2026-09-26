@@ -1633,12 +1633,15 @@
             if (movie.poster) thumbnail.src = movie.poster;
             else thumbnail.hidden = true;
             result.querySelector('.suggestion-title').textContent = movie.title;
-            const subtitle = `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`;
-            result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
             const canPlayInRoom = movie.kind === 'playable' && movie.url;
+            const canSearchYoutubeInRoom = !canPlayInRoom && Boolean(movie.tmdbId);
+            const subtitle = canSearchYoutubeInRoom
+                ? `${movie.year || ''} · Search YouTube in this room`
+                : `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`;
+            result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
             result.title = canPlayInRoom
                 ? 'Play this legal full movie for everyone in the room'
-                : 'Show official legal viewing options for this movie';
+                : 'Search YouTube Creative Commons videos without leaving this room';
             result.addEventListener('click', () => {
                 if (canPlayInRoom) chooseMedia(movie.url, movie.title);
                 else if (movie.tmdbId) {
