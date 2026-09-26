@@ -689,6 +689,9 @@
         </div>
         <div class="header-actions">
             <span class="connection-status" id="connectionStatus" role="status">Connecting…</span>
+            <button class="btn" id="soundBtn" type="button" hidden>
+                <i class="fas fa-volume-up"></i> Enable sound
+            </button>
             <button class="btn voice-btn" id="voiceBtn" type="button" aria-pressed="false">
                 <i class="fas fa-microphone"></i> Mic off
             </button>
@@ -1139,7 +1142,7 @@
             : 'https://stream-x-backend.onrender.com';
         const state = {
             roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
-            lastTime: 0, lastVolume: 100, vimeoPlaying: false,
+            lastTime: 0, lastVolume: 100, vimeoPlaying: false, audioUnlocked: false, autoplayMuted: false,
             voice: { enabled: false, stream: null, peers: new Map() }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1149,6 +1152,7 @@
         const videoSuggestions = document.getElementById('videoSuggestions');
         const connectionStatus = document.getElementById('connectionStatus');
         const voiceBtn = document.getElementById('voiceBtn');
+        const soundBtn = document.getElementById('soundBtn');
         const usernameKey = 'stream-x-display-name';
         const savedName = localStorage.getItem(usernameKey);
         const username = savedName || `Guest ${Math.floor(Math.random() * 900 + 100)}`;
@@ -1250,7 +1254,27 @@
             if (state.player?.destroy) state.player.destroy();
             state.player = null;
             state.ready = false;
+            state.autoplayMuted = false;
+            soundBtn.hidden = true;
             videoFrame.innerHTML = '';
+        }
+
+        function enableRoomSound() {
+            state.audioUnlocked = true;
+            if (!state.autoplayMuted || state.media?.type !== 'youtube' || !state.player) return;
+            state.player.unMute();
+            state.player.setVolume(state.lastVolume);
+            state.autoplayMuted = false;
+            soundBtn.hidden = true;
+            showNotice('Room sound enabled.');
+        }
+
+        function startMutedForAutoplay() {
+            if (state.audioUnlocked || state.media?.type !== 'youtube' || !state.player) return;
+            state.player.mute();
+            state.autoplayMuted = true;
+            soundBtn.hidden = false;
+            showNotice('Video is synced. Select Enable sound once to hear it in this browser.');
         }
 
         function loadMedia(media, playback) {
@@ -1379,6 +1403,7 @@
             const current = playerTime();
             if (Math.abs(current - time) > 0.7) state.player.seekTo ? state.player.seekTo(time, true) : (state.player.currentTime = time);
             if (state.media.type === 'youtube') {
+                if (playback.playing) startMutedForAutoplay();
                 state.player.setVolume(playback.volume);
                 if (playback.playing) state.player.playVideo(); else state.player.pauseVideo();
             } else {
@@ -1763,6 +1788,11 @@
         });
         document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
+        soundBtn.addEventListener('click', enableRoomSound);
+        document.addEventListener('pointerdown', (event) => {
+            if (event.target !== soundBtn) enableRoomSound();
+        }, { capture: true });
+        document.addEventListener('keydown', enableRoomSound, { once: true });
         voiceBtn.addEventListener('click', toggleVoice);
         document.querySelector('.chat-input').addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && event.currentTarget.value.trim()) {
