@@ -21,10 +21,14 @@ const io = new Server(server, {
 // to browsers: TMDB is used only for legal title discovery and official watch
 // pages, not for proxying or embedding copyrighted streams.
 const TMDB_READ_ACCESS_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN || '';
+// Public-scope Vimeo token, kept server-side in Render. Vimeo results are
+// accepted only when their publisher marked them Creative Commons.
+const VIMEO_ACCESS_TOKEN = process.env.VIMEO_ACCESS_TOKEN || '';
 const tmdbSearchCache = new Map();
 const openCatalogueCache = new Map();
 const wikipediaSearchCache = new Map();
 const archiveMovieSearchCache = new Map();
+const vimeoMovieSearchCache = new Map();
 
 // These are full-length films in the public domain. Keeping an allow-list avoids
 // presenting unverified uploads as if they were licensed for streaming.
@@ -146,6 +150,70 @@ async function searchArchivePublicDomainMovies(query) {
         }));
         const results = resolved.filter(Boolean).slice(0, 8);
         archiveMovieSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 10 * 60 * 1000 });
+        return results;
+    } catch (_) {
+        return [];
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function vimeoVideoId(uri) {
+    return String(uri || '').match(/\/(\d+)$/)?.[1] || null;
+}
+
+// Vimeo is not assumed to be a licensed-film catalogue. We explicitly limit
+// results to its Creative Commons / public-domain license identifiers and to
+// long-form videos. Owners can still disable embedding, so the room handles
+// Vimeo player errors without falling back to an unverified source.
+async function searchVimeoCreativeCommonsMovies(query) {
+    if (!VIMEO_ACCESS_TOKEN || query.length < 2) return [];
+    const cacheKey = query.toLowerCase();
+    const cached = vimeoMovieSearchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.results;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+        const url = new URL('https://api.vimeo.com/videos');
+        url.search = new URLSearchParams({
+            query,
+            filter: 'CC',
+            sort: 'relevant',
+            direction: 'desc',
+            per_page: '30',
+            fields: 'uri,name,description,duration,link,license,pictures.sizes,embed.html,privacy.embed,user.name'
+        });
+        const vimeoResponse = await fetch(url, {
+            headers: { Authorization: `Bearer ${VIMEO_ACCESS_TOKEN}`, accept: 'application/vnd.vimeo.*+json;version=3.4' },
+            signal: controller.signal
+        });
+        if (!vimeoResponse.ok) return [];
+        const payload = await vimeoResponse.json();
+        const allowedLicenses = new Set(['by', 'by-sa', 'by-nc', 'by-nc-sa', 'by-nd', 'by-nc-nd', 'cc0']);
+        const results = (payload.data || [])
+            .map((video) => ({ video, id: vimeoVideoId(video.uri) }))
+            .filter(({ video, id }) => id && allowedLicenses.has(video.license) && Number(video.duration) >= 35 * 60)
+            .filter(({ video }) => video.privacy?.embed !== 'private' && video.embed?.html !== null)
+            .slice(0, 8)
+            .map(({ video, id }) => {
+                const pictures = video.pictures?.sizes || [];
+                const poster = pictures[pictures.length - 1]?.link || '';
+                return {
+                    id: `vimeo-${id}`,
+                    kind: 'playable',
+                    title: video.name || 'Untitled Vimeo film',
+                    year: '',
+                    description: plainSnippet(video.description) || 'Creative Commons full-length video on Vimeo',
+                    poster,
+                    url: `https://vimeo.com/${id}`,
+                    actionLabel: `Vimeo ${String(video.license).toUpperCase()} · full-length`,
+                    source: 'Vimeo',
+                    license: video.license,
+                    uploader: video.user?.name || ''
+                };
+            });
+        vimeoMovieSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 10 * 60 * 1000 });
         return results;
     } catch (_) {
         return [];
@@ -406,7 +474,10 @@ app.get('/api/legal-movies', async (request, response) => {
     // The Watch Together picker must never send someone to a trailer or a
     // catalogue page. Only resolve public-domain records after confirming an
     // actual video file exists, so every listed result is playable in-room.
-    const archivePublicResults = await searchArchivePublicDomainMovies(lookupQuery);
+    const [archivePublicResults, vimeoResults] = await Promise.all([
+        searchArchivePublicDomainMovies(lookupQuery),
+        searchVimeoCreativeCommonsMovies(lookupQuery)
+    ]);
     const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
     const archiveResults = archivePublicResults.filter((movie) => {
         const key = normaliseSearch(movie.title);
@@ -414,8 +485,14 @@ app.get('/api/legal-movies', async (request, response) => {
         knownTitles.add(key);
         return true;
     });
+    const vimeoPlayableResults = vimeoResults.filter((movie) => {
+        const key = normaliseSearch(movie.title);
+        if (knownTitles.has(key)) return false;
+        knownTitles.add(key);
+        return true;
+    });
     response.json({
-        results: [...publicResults, ...archiveResults],
+        results: [...publicResults, ...archiveResults, ...vimeoPlayableResults],
         message: 'Every result is a legal full movie that can play in this room.'
     });
 });
@@ -436,6 +513,9 @@ function cleanMedia(value) {
     if (!value || typeof value !== 'object') return null;
     if (value.type === 'youtube' && /^[a-zA-Z0-9_-]{11}$/.test(value.videoId || '')) {
         return { type: 'youtube', videoId: value.videoId };
+    }
+    if (value.type === 'vimeo' && /^\d{1,20}$/.test(value.videoId || '')) {
+        return { type: 'vimeo', videoId: value.videoId };
     }
     if (value.type === 'video' && typeof value.url === 'string' && value.url.length <= 2000) {
         try {

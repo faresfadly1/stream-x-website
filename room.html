@@ -6,6 +6,7 @@
     <title>Watch Room - Stream X</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="https://player.vimeo.com/api/player.js"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -1127,7 +1128,7 @@
             : 'https://stream-x-backend.onrender.com';
         const state = {
             roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
-            lastTime: 0, lastVolume: 100,
+            lastTime: 0, lastVolume: 100, vimeoPlaying: false,
             voice: { enabled: false, stream: null, peers: new Map() }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1197,9 +1198,21 @@
             return null;
         }
 
+        function getVimeoVideoId(value) {
+            try {
+                const url = new URL(value.trim());
+                if (url.hostname === 'vimeo.com' || url.hostname.endsWith('.vimeo.com')) {
+                    return url.pathname.match(/\/(\d+)(?:\/|$)/)?.[1] || null;
+                }
+            } catch (_) { /* handled below */ }
+            return null;
+        }
+
         function getMediaFromUrl(value) {
             const youtubeId = getYouTubeVideoId(value);
             if (youtubeId) return { type: 'youtube', videoId: youtubeId };
+            const vimeoId = getVimeoVideoId(value);
+            if (vimeoId) return { type: 'vimeo', videoId: vimeoId };
             try {
                 const url = new URL(value.trim());
                 if (/\.(mp4|webm|ogg|m3u8)(?:$|[?#])/i.test(url.pathname + url.search)) return { type: 'video', url: url.href };
@@ -1208,7 +1221,9 @@
         }
 
         function visibleMediaUrl(media) {
-            return media.type === 'youtube' ? `https://www.youtube.com/watch?v=${media.videoId}` : media.url;
+            if (media.type === 'youtube') return `https://www.youtube.com/watch?v=${media.videoId}`;
+            if (media.type === 'vimeo') return `https://vimeo.com/${media.videoId}`;
+            return media.url;
         }
 
         function sameMedia(first, second) {
@@ -1256,6 +1271,24 @@
                         if (window.YT?.Player) { clearInterval(waitForApi); createYouTubePlayer(); }
                     }, 100);
                 }
+            } else if (media.type === 'vimeo') {
+                videoFrame.innerHTML = `<iframe id="vimeoPlayer" src="https://player.vimeo.com/video/${encodeURIComponent(media.videoId)}?dnt=1&title=0&byline=0&portrait=0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:0;background:#000;"></iframe>`;
+                const createVimeoPlayer = () => {
+                    const player = new Vimeo.Player('vimeoPlayer');
+                    state.player = player;
+                    player.ready().then(() => { state.ready = true; applyPlayback(playback); }).catch(() => showMediaError('This Vimeo video cannot be played in an embedded room.'));
+                    player.on('play', () => { state.vimeoPlaying = true; emitPlayback('play'); });
+                    player.on('pause', () => { state.vimeoPlaying = false; emitPlayback('pause'); });
+                    player.on('seeked', () => emitPlayback('seek'));
+                    player.on('timeupdate', (data) => { state.lastTime = Number(data.seconds) || state.lastTime; });
+                    player.on('volumechange', (data) => { state.lastVolume = Math.round((Number(data.volume) || 0) * 100); emitPlayback('volume'); });
+                };
+                if (window.Vimeo?.Player) createVimeoPlayer();
+                else {
+                    const waitForApi = setInterval(() => {
+                        if (window.Vimeo?.Player) { clearInterval(waitForApi); createVimeoPlayer(); }
+                    }, 100);
+                }
             } else {
                 const video = document.createElement('video');
                 video.src = media.url;
@@ -1281,16 +1314,19 @@
 
         function playerTime() {
             if (!state.player) return 0;
+            if (state.media?.type === 'vimeo') return state.lastTime;
             return state.media?.type === 'youtube'
                 ? Number(state.player.getCurrentTime()) || 0
                 : Number(state.player.currentTime) || 0;
         }
 
         function playerVolume() {
+            if (state.media?.type === 'vimeo') return state.lastVolume;
             return state.media?.type === 'youtube' ? state.player.getVolume() : Math.round(state.player.volume * 100);
         }
 
         function isPlaying() {
+            if (state.media?.type === 'vimeo') return state.vimeoPlaying;
             return state.media?.type === 'youtube'
                 ? state.player.getPlayerState() === YT.PlayerState.PLAYING
                 : !state.player.paused;
@@ -1298,6 +1334,17 @@
 
         function emitPlayback(type) {
             if (!state.ready || Date.now() < state.suppressUntil) return;
+            if (state.media?.type === 'vimeo') {
+                Promise.all([
+                    state.player.getCurrentTime().catch(() => state.lastTime),
+                    state.player.getVolume().catch(() => state.lastVolume / 100)
+                ]).then(([currentTime, volume]) => {
+                    state.lastTime = Number(currentTime) || 0;
+                    state.lastVolume = Math.round((Number(volume) || 0) * 100);
+                    socket.emit('playback-action', { type, currentTime: state.lastTime, volume: state.lastVolume });
+                });
+                return;
+            }
             socket.emit('playback-action', { type, currentTime: playerTime(), volume: playerVolume() });
         }
 
@@ -1305,6 +1352,20 @@
             if (!state.ready || !playback || !state.player) return;
             state.suppressUntil = Date.now() + 900;
             const time = targetTime(playback);
+            if (state.media.type === 'vimeo') {
+                state.lastTime = time;
+                state.lastVolume = playback.volume;
+                Promise.all([state.player.getCurrentTime(), state.player.setVolume(playback.volume / 100)])
+                    .then(([current]) => {
+                        const seek = Math.abs((Number(current) || 0) - time) > 0.7
+                            ? state.player.setCurrentTime(time)
+                            : Promise.resolve();
+                        return seek.then(() => playback.playing ? state.player.play() : state.player.pause());
+                    })
+                    .catch(() => showNotice('Press play once to enable this Vimeo video in your browser.'));
+                state.vimeoPlaying = playback.playing;
+                return;
+            }
             const current = playerTime();
             if (Math.abs(current - time) > 0.7) state.player.seekTo ? state.player.seekTo(time, true) : (state.player.currentTime = time);
             if (state.media.type === 'youtube') {
