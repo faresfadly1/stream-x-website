@@ -1612,11 +1612,15 @@
         function sendVoiceOffer(peerId, peer) {
             if (peer.offering || peer.connection.signalingState !== 'stable') return;
             peer.offering = true;
+            peer.makingOffer = true;
             peer.connection.createOffer()
                 .then((offer) => peer.connection.setLocalDescription(offer))
                 .then(() => socket.emit('voice-signal', { target: peerId, signal: { description: peer.connection.localDescription } }))
                 .catch(() => removeVoicePeer(peerId))
-                .finally(() => { peer.offering = false; });
+                .finally(() => {
+                    peer.offering = false;
+                    peer.makingOffer = false;
+                });
         }
 
         function createVoicePeer(peerId, initiator) {
@@ -1627,7 +1631,18 @@
                 return existingPeer.connection;
             }
             const connection = new RTCPeerConnection(voiceConfiguration());
-            const peer = { connection, pendingCandidates: [], audio: null, offering: false };
+            // Perfect-negotiation state: when both people enable their mic at
+            // once, only the deterministic "polite" side rolls back and
+            // accepts the other offer instead of closing the call.
+            const peer = {
+                connection,
+                pendingCandidates: [],
+                audio: null,
+                offering: false,
+                makingOffer: false,
+                ignoreOffer: false,
+                polite: String(socket.id).localeCompare(String(peerId)) > 0
+            };
             state.voice.peers.set(peerId, peer);
             addLocalAudio(connection);
             connection.onicecandidate = ({ candidate }) => {
@@ -1665,6 +1680,13 @@
             if (!connection || !peer) return;
             try {
                 if (signal.description) {
+                    const offerCollision = signal.description.type === 'offer'
+                        && (peer.makingOffer || connection.signalingState !== 'stable');
+                    peer.ignoreOffer = !peer.polite && offerCollision;
+                    if (peer.ignoreOffer) return;
+                    if (offerCollision && peer.polite) {
+                        await connection.setLocalDescription({ type: 'rollback' });
+                    }
                     await connection.setRemoteDescription(signal.description);
                     while (peer.pendingCandidates.length) await connection.addIceCandidate(peer.pendingCandidates.shift());
                     if (signal.description.type === 'offer') {
@@ -1672,6 +1694,7 @@
                         socket.emit('voice-signal', { target: peerId, signal: { description: connection.localDescription } });
                     }
                 } else if (signal.candidate) {
+                    if (peer.ignoreOffer) return;
                     if (connection.remoteDescription) await connection.addIceCandidate(signal.candidate);
                     else peer.pendingCandidates.push(signal.candidate);
                 }
