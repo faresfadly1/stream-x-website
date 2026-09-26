@@ -1145,7 +1145,7 @@
             ? 'http://localhost:3000'
             : 'https://stream-x-backend.onrender.com';
         const state = {
-            roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
+            roomId: null, player: null, media: null, ready: false, unloading: false, suppressUntil: 0,
             lastTime: 0, lastVolume: 100, vimeoPlaying: false, youtubeMonitorTimer: null,
             youtubeObservedTime: 0, youtubeObservedAt: 0, audioUnlocked: false, autoplayMuted: false,
             chatMessageIds: new Set(),
@@ -1402,7 +1402,7 @@
         }
 
         function onYouTubeState(code) {
-            if (Date.now() < state.suppressUntil || !state.ready) return;
+            if (state.unloading || Date.now() < state.suppressUntil || !state.ready) return;
             if (code === YT.PlayerState.PLAYING) emitPlayback('play');
             if (code === YT.PlayerState.PAUSED || code === YT.PlayerState.ENDED) emitPlayback('pause');
         }
@@ -1428,7 +1428,7 @@
         }
 
         function emitPlayback(type) {
-            if (!state.ready || Date.now() < state.suppressUntil) return;
+            if (state.unloading || !state.ready || Date.now() < state.suppressUntil) return;
             if (state.media?.type === 'vimeo') {
                 Promise.all([
                     state.player.getCurrentTime().catch(() => state.lastTime),
@@ -1908,8 +1908,10 @@
         setInterval(() => socket.connected && socket.emit('request-sync'), 8000);
 
         window.addEventListener('pagehide', () => {
+            state.unloading = true;
             if (state.voice.enabled) leaveVoice();
         });
+        window.addEventListener('pageshow', () => { state.unloading = false; });
 
         initialiseRoom();
     </script>
