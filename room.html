@@ -1268,20 +1268,36 @@
             videoFrame.innerHTML = '';
         }
 
-        function enableRoomSound() {
+        async function enableIncomingVoice() {
+            const attempts = [];
+            state.voice.peers.forEach((peer) => {
+                if (peer.audio) attempts.push(peer.audio.play());
+            });
+            if (!attempts.length) return false;
+            const results = await Promise.allSettled(attempts);
+            return results.every((result) => result.status === 'fulfilled');
+        }
+
+        async function enableRoomSound() {
             state.audioUnlocked = true;
-            if (!state.autoplayMuted || state.media?.type !== 'youtube' || !state.player) return;
-            state.player.unMute();
-            state.player.setVolume(state.lastVolume);
-            state.autoplayMuted = false;
-            soundBtn.hidden = true;
-            showNotice('Room sound enabled.');
+            const voiceReady = await enableIncomingVoice();
+            let videoReady = false;
+            if (state.autoplayMuted && state.media?.type === 'youtube' && state.player) {
+                state.player.unMute();
+                state.player.setVolume(state.lastVolume);
+                state.autoplayMuted = false;
+                videoReady = true;
+            }
+            if (voiceReady || videoReady) soundBtn.hidden = true;
+            if (voiceReady) showNotice('Room voice audio enabled.');
+            else if (videoReady) showNotice('Room sound enabled.');
         }
 
         function startMutedForAutoplay() {
             if (state.audioUnlocked || state.media?.type !== 'youtube' || !state.player) return;
             state.player.mute();
             state.autoplayMuted = true;
+            soundBtn.innerHTML = '<i class="fas fa-volume-up"></i> Enable sound';
             soundBtn.hidden = false;
             showNotice('Video is synced. Select Enable sound once to hear it in this browser.');
         }
@@ -1604,10 +1620,17 @@
                 audio.dataset.peerId = peerId;
                 audio.srcObject = stream;
                 document.body.appendChild(audio);
-                audio.play().catch(() => showNotice('Tap the page once to start room audio in this browser.', true));
                 peer.audio = audio;
+                audio.play().catch(() => {
+                    soundBtn.hidden = false;
+                    soundBtn.innerHTML = '<i class="fas fa-volume-up"></i> Enable voice audio';
+                    showNotice('Select Enable voice audio once to hear people in this room.', true);
+                });
             };
             connection.onconnectionstatechange = () => {
+                if (connection.connectionState === 'connected') {
+                    showNotice('Voice connection ready.');
+                }
                 if (['failed', 'closed'].includes(connection.connectionState)) removeVoicePeer(peerId);
             };
             if (initiator) sendVoiceOffer(peerId, peer);
