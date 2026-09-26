@@ -245,7 +245,7 @@ async function searchTmdbMovies(query) {
         });
         if (!tmdbResponse.ok) return [];
         const payload = await tmdbResponse.json();
-        const results = (payload.results || []).slice(0, 12).map((movie) => ({
+        const results = (payload.results || []).slice(0, 20).map((movie) => ({
             id: `tmdb-${movie.id}`,
             tmdbId: movie.id,
             kind: 'legal-provider',
