@@ -1295,7 +1295,11 @@
                 const createYouTubePlayer = () => {
                     state.player = new YT.Player('youtubePlayer', {
                         videoId: media.videoId,
-                        playerVars: { autoplay: 0, playsinline: 1, rel: 0, enablejsapi: 1 },
+                        // A viewer who joins while the host is already playing
+                        // must request autoplay at iframe creation time. Calling
+                        // playVideo() alone is blocked by some browsers even when
+                        // the player is muted.
+                        playerVars: { autoplay: playback?.playing ? 1 : 0, playsinline: 1, rel: 0, enablejsapi: 1 },
                         events: {
                             onReady: () => { state.ready = true; applyPlayback(playback); },
                             onStateChange: ({ data }) => onYouTubeState(data),
