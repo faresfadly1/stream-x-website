@@ -1148,7 +1148,7 @@
             roomId: null, player: null, media: null, ready: false, unloading: false, suppressUntil: 0,
             lastTime: 0, lastVolume: 100, vimeoPlaying: false, youtubeMonitorTimer: null,
             youtubeObservedTime: 0, youtubeObservedAt: 0, audioUnlocked: false, autoplayMuted: false,
-            chatMessageIds: new Set(),
+            chatMessageIds: new Set(), resumeAfterRefresh: false,
             voice: { enabled: false, stream: null, peers: new Map() }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1198,7 +1198,9 @@
         socket.on('room-state', (room) => {
             updateUsersList(room.users || []);
             (room.chatHistory || []).forEach((message) => addChatMessage(message.username, message.message, false, message.id));
-            if (room.media) loadMedia(room.media, room.playback);
+            const resumedPlayback = takeRefreshPlayback(room);
+            if (resumedPlayback) state.resumeAfterRefresh = true;
+            if (room.media) loadMedia(room.media, resumedPlayback || room.playback);
             else showEmptyState();
         });
         socket.on('media-change', ({ media, playback }) => loadMedia(media, playback));
@@ -1255,6 +1257,18 @@
         function targetTime(playback) {
             if (!playback) return 0;
             return Math.max(0, playback.currentTime + (playback.playing ? (Date.now() - playback.updatedAt) / 1000 : 0));
+        }
+
+        function takeRefreshPlayback(room) {
+            try {
+                const saved = JSON.parse(sessionStorage.getItem('stream-x-refresh-playback') || 'null');
+                sessionStorage.removeItem('stream-x-refresh-playback');
+                if (!saved || saved.roomId !== state.roomId || saved.expiresAt < Date.now() || !saved.playing) return null;
+                if (!sameMedia(room.media, saved.media)) return null;
+                return { ...room.playback, playing: true, currentTime: saved.currentTime, updatedAt: Date.now() };
+            } catch (_) {
+                return null;
+            }
         }
 
         function resetPlayer() {
@@ -1327,6 +1341,10 @@
                             onReady: () => {
                                 state.ready = true;
                                 applyPlayback(playback);
+                                if (state.resumeAfterRefresh) {
+                                    state.resumeAfterRefresh = false;
+                                    setTimeout(() => emitPlayback('play'), 1100);
+                                }
                                 // The YouTube IFrame API has no volume or seek event.
                                 // Watch for meaningful deltas only while this player exists.
                                 state.youtubeObservedTime = Number(state.player.getCurrentTime()) || 0;
@@ -1909,7 +1927,20 @@
 
         // YouTube emits a paused event while the document is being reloaded.
         // Mark unloading early so this browser never turns the shared room off.
-        window.addEventListener('beforeunload', () => { state.unloading = true; });
+        window.addEventListener('beforeunload', () => {
+            state.unloading = true;
+            try {
+                if (state.roomId && state.media && isPlaying()) {
+                    sessionStorage.setItem('stream-x-refresh-playback', JSON.stringify({
+                        roomId: state.roomId,
+                        media: state.media,
+                        currentTime: playerTime(),
+                        playing: true,
+                        expiresAt: Date.now() + 15000
+                    }));
+                }
+            } catch (_) { /* Refresh resume is an optional browser convenience. */ }
+        });
         window.addEventListener('pagehide', () => {
             state.unloading = true;
             if (state.voice.enabled) leaveVoice();
