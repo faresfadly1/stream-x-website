@@ -1299,8 +1299,19 @@
             }
         }
 
-        async function enableRoomSound() {
+        async function unlockRoomAudio() {
             state.audioUnlocked = true;
+            try {
+                const context = voiceRelayContext();
+                await context.resume();
+                return context.state === 'running';
+            } catch (_) {
+                return false;
+            }
+        }
+
+        async function enableRoomSound() {
+            await unlockRoomAudio();
             const voiceReady = await enableIncomingVoice();
             let videoReady = false;
             if (state.autoplayMuted && state.media?.type === 'youtube' && state.player) {
@@ -1313,6 +1324,12 @@
             if (voiceReady) showNotice('Room voice audio enabled.');
             else if (videoReady) showNotice('Room sound enabled.');
         }
+
+        // Browsers only allow audio output after a user gesture. Opening the
+        // room, sharing it, or pressing any control is enough to unlock voice
+        // for listeners who never need to turn their own microphone on.
+        document.addEventListener('pointerdown', unlockRoomAudio, { passive: true });
+        document.addEventListener('keydown', unlockRoomAudio);
 
         function startMutedForAutoplay() {
             if (state.audioUnlocked || state.media?.type !== 'youtube' || !state.player) return;
