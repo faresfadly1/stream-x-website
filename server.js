@@ -469,6 +469,16 @@ app.get('/api/tmdb/movie/:id', async (request, response) => {
     if (!movie) return response.status(404).json({ error: 'Movie details are unavailable.' });
     response.json({ movie });
 });
+// TMDB is used for fast, comprehensive title discovery only.  These results
+// deliberately remain separate from the in-room player search: a catalogue
+// record is not proof that Stream X has streaming rights for that title.
+app.get('/api/movie-catalogue', async (request, response) => {
+    const rawQuery = String(request.query.q || '').trim().slice(0, 80);
+    const lookupQuery = filmTitleQuery(rawQuery);
+    if (normaliseSearch(lookupQuery).length < 2) return response.json({ results: [] });
+    const results = await searchTmdbMovies(lookupQuery);
+    response.json({ results });
+});
 app.get('/api/legal-movies', async (request, response) => {
     const rawQuery = String(request.query.q || '').trim().slice(0, 80);
     const lookupQuery = filmTitleQuery(rawQuery);
@@ -477,13 +487,18 @@ app.get('/api/legal-movies', async (request, response) => {
         .filter((movie) => matchesMovie(movie, query))
         .slice(0, 6)
         .map(publicMovieResult);
+    // Archive.org needs a second metadata request for every candidate.  Do not
+    // make the first keystroke wait on it: return Vimeo/static matches first,
+    // then let the browser request Archive results in the background.  Cached
+    // Archive results are still included immediately on later searches.
+    const includeArchive = request.query.archive === '1';
+    const cachedArchive = archiveMovieSearchCache.get(lookupQuery.toLowerCase());
+    const archivePublicResults = includeArchive
+        ? await searchArchivePublicDomainMovies(lookupQuery)
+        : (cachedArchive?.expiresAt > Date.now() ? cachedArchive.results : []);
     // The Watch Together picker must never send someone to a trailer or a
-    // catalogue page. Only resolve public-domain records after confirming an
-    // actual video file exists, so every listed result is playable in-room.
-    const [archivePublicResults, vimeoResults] = await Promise.all([
-        searchArchivePublicDomainMovies(lookupQuery),
-        searchVimeoCreativeCommonsMovies(lookupQuery)
-    ]);
+    // catalogue page. Every item returned here has a verified playable source.
+    const vimeoResults = await searchVimeoCreativeCommonsMovies(lookupQuery);
     const knownTitles = new Set(publicResults.map((movie) => normaliseSearch(movie.title)));
     const archiveResults = archivePublicResults.filter((movie) => {
         const key = normaliseSearch(movie.title);

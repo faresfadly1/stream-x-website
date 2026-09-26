@@ -1056,21 +1056,12 @@
             });
         });
 
-        // Handle Enter key in URL input
-        urlInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && this.value.trim()) {
-                loadVideo(this.value.trim(), true);
-                videoSuggestions.classList.remove('active');
-            }
-        });
-
         // Handle close button
         closeBtn.addEventListener('click', function() {
             videoFrame.src = '';
             videoFrame.style.display = 'none';
             emptyState.style.display = 'block';
             errorMessage.style.display = 'none';
-            urlInput.value = '';
         });
 
         // Share button functionality
@@ -1244,7 +1235,6 @@
 
         function loadMedia(media, playback) {
             if (!media) return showEmptyState();
-            urlInput.value = visibleMediaUrl(media);
             emptyState.style.display = 'none';
             videoFrame.style.display = 'block';
             errorMessage.style.display = 'none';
@@ -1385,7 +1375,6 @@
             videoFrame.style.display = 'none';
             emptyState.style.display = 'flex';
             errorMessage.style.display = 'none';
-            urlInput.value = '';
         }
 
         function showMediaError(message) {
@@ -1579,7 +1568,17 @@
 
         let searchTimer;
         let searchRequest = 0;
-        let movieResults = [];
+        let playableResults = [];
+        let catalogueResults = [];
+
+        function mergeResults(current, incoming) {
+            const known = new Set(current.map((movie) => movie.id));
+            return [...current, ...incoming.filter((movie) => !known.has(movie.id))];
+        }
+
+        function renderSearchResults() {
+            showMovieResults([...playableResults, ...catalogueResults]);
+        }
 
         function showMovieResults(matches) {
             videoSuggestions.textContent = '';
@@ -1595,27 +1594,62 @@
                 result.querySelector('.suggestion-title').textContent = movie.title;
                 const subtitle = `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`;
                 result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
-                result.title = 'Play this legal full movie for everyone in the room';
+                const canPlayInRoom = movie.kind === 'playable' && movie.url;
+                result.title = canPlayInRoom
+                    ? 'Play this legal full movie for everyone in the room'
+                    : 'Show official legal viewing options for this movie';
                 result.addEventListener('click', () => {
-                    chooseMedia(movie.url, movie.title);
+                    if (canPlayInRoom) chooseMedia(movie.url, movie.title);
+                    else if (movie.tmdbId) location.href = `movie-details.html?tmdb=${encodeURIComponent(movie.tmdbId)}`;
                 });
                 videoSuggestions.appendChild(result);
             });
             videoSuggestions.classList.toggle('active', matches.length > 0);
         }
 
-        async function searchFullMovies(query) {
+        function searchFullMovies(query) {
             const requestId = ++searchRequest;
-            try {
-                const response = await fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}`);
-                if (!response.ok) throw new Error('Search failed');
-                const data = await response.json();
-                if (requestId !== searchRequest) return;
-                movieResults = data.results || [];
-                showMovieResults(movieResults);
-            } catch (_) {
-                if (requestId === searchRequest) showNotice('Movie search is temporarily unavailable. Please try again.', true);
+            if (query.length < 2) {
+                playableResults = [];
+                catalogueResults = [];
+                showMovieResults([]);
+                return;
             }
+            playableResults = [];
+            catalogueResults = [];
+            showMovieResults([]);
+            // Search the comprehensive title catalogue alongside the legal
+            // in-room catalogue. Whichever responds first renders first.
+            fetch(`${SERVER_URL}/api/movie-catalogue?q=${encodeURIComponent(query)}`)
+                .then((response) => response.ok ? response.json() : Promise.reject())
+                .then((data) => {
+                    if (requestId !== searchRequest) return;
+                    catalogueResults = data.results || [];
+                    renderSearchResults();
+                })
+                .catch(() => { /* The in-room search can still succeed. */ });
+
+            fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}`)
+                .then((response) => response.ok ? response.json() : Promise.reject())
+                .then((data) => {
+                    if (requestId !== searchRequest) return;
+                    playableResults = data.results || [];
+                    renderSearchResults();
+                    // Archive.org is valuable for public-domain cinema but is
+                    // slow. Merge it in only after the fast results are shown.
+                    return fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}&archive=1`);
+                })
+                .then((response) => response?.ok ? response.json() : null)
+                .then((data) => {
+                    if (!data || requestId !== searchRequest) return;
+                    playableResults = mergeResults(playableResults, data.results || []);
+                    renderSearchResults();
+                })
+                .catch(() => {
+                    if (requestId === searchRequest && !catalogueResults.length) {
+                        showNotice('Movie search is temporarily unavailable. Please try again.', true);
+                    }
+                });
         }
 
         function chooseMedia(value, title = '') {
@@ -1626,26 +1660,22 @@
             if (title) showNotice(`Playing ${title} for everyone in the room.`);
         }
 
-        urlInput.addEventListener('focus', () => searchFullMovies(urlInput.value.trim()));
+        urlInput.addEventListener('focus', () => {
+            if (urlInput.value.trim().length >= 2) searchFullMovies(urlInput.value.trim());
+        });
         urlInput.addEventListener('input', () => {
             const value = urlInput.value.trim();
             clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => searchFullMovies(value), 200);
+            searchTimer = setTimeout(() => searchFullMovies(value), 450);
         });
         document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
-        urlInput.addEventListener('keydown', async (event) => {
+        urlInput.addEventListener('keydown', (event) => {
             if (event.key !== 'Enter' || !urlInput.value.trim()) return;
+            event.preventDefault();
             const value = urlInput.value.trim();
-            // Prevent the debounced input search from invalidating this Enter
-            // search while it is awaiting its response.
             clearTimeout(searchTimer);
-            await searchFullMovies(value);
-            const playable = movieResults.find((movie) => movie.kind === 'playable');
-            if (playable) chooseMedia(playable.url, playable.title);
-            else if (movieResults.length) {
-                videoSuggestions.classList.add('active');
-                showNotice('Choose the matching title from the legal results.');
-            } else showNotice('No playable legal match found. Try the title without extra words.', true);
+            searchFullMovies(value);
+            showNotice('Choose a result below. Full-movie matches start for everyone in the room.');
         });
         document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
