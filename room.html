@@ -1613,7 +1613,13 @@
             }
         }
 
+        // 24 kHz mono is clear for speech while keeping the data rate modest.
+        // A 2048-sample input block at 48 kHz is ~43 ms, which keeps voice
+        // responsive while a separate video player is running.
         const RELAY_SAMPLE_RATE = 24000;
+        const RELAY_PROCESSOR_SAMPLES = 2048;
+        const RELAY_JITTER_SECONDS = 0.075;
+        const RELAY_MAX_BUFFER_SECONDS = 0.25;
 
         function voiceRelayContext() {
             if (state.voice.relay.context) return state.voice.relay.context;
@@ -1644,16 +1650,15 @@
             await context.resume();
             stopVoiceRelay();
             relay.source = context.createMediaStreamSource(stream);
-            relay.processor = context.createScriptProcessor(4096, 1, 1);
+            relay.processor = context.createScriptProcessor(RELAY_PROCESSOR_SAMPLES, 1, 1);
             relay.silence = context.createGain();
             relay.silence.gain.value = 0;
             relay.processor.onaudioprocess = ({ inputBuffer }) => {
                 if (!state.voice.enabled || !socket.connected) return;
                 const pcm = downsampleVoice(inputBuffer.getChannelData(0), context.sampleRate);
-                // Do not mark voice packets volatile: on browsers that are
-                // temporarily using polling transport, volatile packets can be
-                // discarded before the next poll is writable, causing silence.
-                socket.emit('voice-audio', pcm.buffer);
+                // PCM does not benefit from per-message compression. Skipping
+                // it avoids CPU spikes that can make the movie and voice stutter.
+                socket.compress(false).emit('voice-audio', pcm.buffer);
             };
             relay.source.connect(relay.processor);
             relay.processor.connect(relay.silence);
@@ -1696,7 +1701,13 @@
             const relay = state.voice.relay;
             const now = context.currentTime;
             let nextPlaybackAt = relay.playbackAt.get(peerId) || 0;
-            if (nextPlaybackAt < now || nextPlaybackAt > now + 0.5) nextPlaybackAt = now + 0.03;
+            if (nextPlaybackAt < now) nextPlaybackAt = now + RELAY_JITTER_SECONDS;
+            // Keep voice real-time: if a slow transport creates a queue, drop
+            // this late block instead of making the conversation lag behind.
+            if (nextPlaybackAt > now + RELAY_MAX_BUFFER_SECONDS) {
+                source.disconnect();
+                return;
+            }
             source.start(nextPlaybackAt);
             relay.playbackAt.set(peerId, nextPlaybackAt + audio.duration);
         }

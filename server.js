@@ -804,12 +804,12 @@ io.on('connection', (socket) => {
                 : payload instanceof ArrayBuffer
                     ? Buffer.from(payload)
                     : null;
-        // At 24 kHz mono PCM, a normal 4096-sample browser block is 4096 bytes.
+        // At 24 kHz mono PCM, a normal browser block is only a few kilobytes.
         // Keep a firm bound so a client cannot use this event as arbitrary upload.
         if (!audio || audio.length < 2 || audio.length > 16384 || audio.length % 2) return;
-        // Deliver every audio block. `volatile` can drop every block while a
-        // polling client is between requests, which looks exactly like a mute.
-        socket.to(roomId).emit('voice-audio', { from: socket.id, data: audio });
+        // Deliver every audio block, but skip compression: PCM is already
+        // compact enough for live voice and compression adds jitter under load.
+        socket.to(roomId).compress(false).emit('voice-audio', { from: socket.id, data: audio });
     });
 
     socket.on('disconnect', () => {
