@@ -1907,6 +1907,9 @@
         }, 1000);
         setInterval(() => socket.connected && socket.emit('request-sync'), 8000);
 
+        // YouTube emits a paused event while the document is being reloaded.
+        // Mark unloading early so this browser never turns the shared room off.
+        window.addEventListener('beforeunload', () => { state.unloading = true; });
         window.addEventListener('pagehide', () => {
             state.unloading = true;
             if (state.voice.enabled) leaveVoice();
