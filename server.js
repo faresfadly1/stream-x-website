@@ -795,9 +795,14 @@ io.on('connection', (socket) => {
         socket.data.voiceActive = true;
         for (const peerId of members) {
             if (peerId === socket.id) continue;
-            // The speaker initiates connections to every listener. If a listener
-            // later turns on their mic, this also renegotiates that same channel.
-            socket.emit('voice-peer-joined', peerId);
+            // Exactly one side starts a WebRTC negotiation. Without this, two
+            // people enabling Voice at the same instant can both send an offer
+            // and race each other before either audio channel is established.
+            const peer = io.sockets.sockets.get(peerId);
+            if (!peer) continue;
+            const initiator = socket.id.localeCompare(peerId) < 0 ? socket : peer;
+            const targetId = initiator === socket ? peerId : socket.id;
+            initiator.emit('voice-peer-joined', targetId);
         }
         socket.to(roomId).emit('voice-presence', { id: socket.id, active: true });
     });
