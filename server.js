@@ -22,6 +22,9 @@ const io = new Server(server, {
 // to browsers: TMDB is used only for legal title discovery and official watch
 // pages, not for proxying or embedding copyrighted streams.
 const TMDB_READ_ACCESS_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN || '';
+// This key is used only by the server for YouTube's official discovery API.
+// It is never returned to browsers.
+const YOUTUBE_DATA_API_KEY = process.env.YOUTUBE_DATA_API_KEY || '';
 // Public-scope Vimeo token, kept server-side in Render. Vimeo results are
 // accepted only when their publisher marked them Creative Commons.
 const VIMEO_ACCESS_TOKEN = process.env.VIMEO_ACCESS_TOKEN || '';
@@ -30,6 +33,7 @@ const openCatalogueCache = new Map();
 const wikipediaSearchCache = new Map();
 const archiveMovieSearchCache = new Map();
 const vimeoMovieSearchCache = new Map();
+const youtubeMovieSearchCache = new Map();
 // Direct-player references are deliberately short-lived server records rather
 // than arbitrary URLs supplied by a browser.  A player can therefore load only
 // a source that was already verified by the legal movie search.
@@ -230,6 +234,88 @@ async function searchVimeoCreativeCommonsMovies(query) {
                 };
             });
         vimeoMovieSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 10 * 60 * 1000 });
+        return results;
+    } catch (_) {
+        return [];
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function iso8601DurationSeconds(value) {
+    const match = String(value || '').match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+    if (!match) return 0;
+    return (Number(match[1]) || 0) * 86400
+        + (Number(match[2]) || 0) * 3600
+        + (Number(match[3]) || 0) * 60
+        + (Number(match[4]) || 0);
+}
+
+// YouTube's search API is restricted to Creative Commons, public, embeddable,
+// long-form videos. This avoids treating every upload returned by a title query
+// as a film Stream X has permission to show in a shared room.
+async function searchYoutubeCreativeCommonsVideos(query) {
+    if (!YOUTUBE_DATA_API_KEY || query.length < 2) return [];
+    const cacheKey = query.toLowerCase();
+    const cached = youtubeMovieSearchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.results;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+        const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search');
+        searchUrl.search = new URLSearchParams({
+            key: YOUTUBE_DATA_API_KEY,
+            part: 'snippet',
+            q: query,
+            type: 'video',
+            maxResults: '25',
+            order: 'relevance',
+            safeSearch: 'strict',
+            videoDuration: 'long',
+            videoEmbeddable: 'true',
+            videoSyndicated: 'true',
+            videoLicense: 'creativeCommon'
+        });
+        const searchResponse = await fetch(searchUrl, { signal: controller.signal });
+        if (!searchResponse.ok) return [];
+        const searchPayload = await searchResponse.json();
+        const ids = (searchPayload.items || []).map((item) => item.id?.videoId).filter(Boolean);
+        if (!ids.length) return [];
+
+        const videosUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
+        videosUrl.search = new URLSearchParams({
+            key: YOUTUBE_DATA_API_KEY,
+            part: 'snippet,contentDetails,status',
+            id: ids.join(',')
+        });
+        const videosResponse = await fetch(videosUrl, { signal: controller.signal });
+        if (!videosResponse.ok) return [];
+        const videosPayload = await videosResponse.json();
+        const titleQuery = normaliseSearch(query);
+        const queryWords = titleQuery.split(' ').filter((word) => word.length >= 2);
+        const notAFullVideo = /\b(trailer|teaser|clip|short|scene|review|reaction|recap|explained|behind the scenes|interview|music video)\b/i;
+        const results = (videosPayload.items || [])
+            .filter((video) => video.id && video.status?.embeddable && video.status?.privacyStatus === 'public')
+            .filter((video) => iso8601DurationSeconds(video.contentDetails?.duration) >= 35 * 60)
+            .filter((video) => !notAFullVideo.test(video.snippet?.title || ''))
+            .filter((video) => {
+                const title = normaliseSearch(video.snippet?.title);
+                return !queryWords.length || queryWords.every((word) => title.includes(word));
+            })
+            .slice(0, 12)
+            .map((video) => ({
+                id: `youtube-${video.id}`,
+                kind: 'playable',
+                title: video.snippet?.title || 'YouTube video',
+                year: (video.snippet?.publishedAt || '').slice(0, 4),
+                description: `Creative Commons long-form video · ${video.snippet?.channelTitle || 'YouTube'}`,
+                poster: video.snippet?.thumbnails?.medium?.url || video.snippet?.thumbnails?.default?.url || '',
+                url: `https://www.youtube.com/watch?v=${video.id}`,
+                actionLabel: 'YouTube Creative Commons · full-length',
+                source: 'YouTube'
+            }));
+        youtubeMovieSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 10 * 60 * 1000 });
         return results;
     } catch (_) {
         return [];
@@ -503,6 +589,16 @@ app.get('/api/movie-catalogue', async (request, response) => {
     if (normaliseSearch(lookupQuery).length < 2) return response.json({ results: [] });
     const results = await searchTmdbMovies(lookupQuery);
     response.json({ results });
+});
+app.get('/api/youtube-videos', async (request, response) => {
+    const rawQuery = String(request.query.q || '').trim().slice(0, 80);
+    const query = filmTitleQuery(rawQuery);
+    if (normaliseSearch(query).length < 2) return response.json({ results: [] });
+    if (!YOUTUBE_DATA_API_KEY) {
+        return response.status(503).json({ error: 'YouTube search has not been configured yet.', results: [] });
+    }
+    const results = await searchYoutubeCreativeCommonsVideos(query);
+    response.json({ results, message: 'Results are public, embeddable, Creative Commons long-form YouTube videos.' });
 });
 app.get('/api/legal-movies', async (request, response) => {
     const rawQuery = String(request.query.q || '').trim().slice(0, 80);

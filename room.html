@@ -1641,7 +1641,13 @@
                 : 'Show official legal viewing options for this movie';
             result.addEventListener('click', () => {
                 if (canPlayInRoom) chooseMedia(movie.url, movie.title);
-                else if (movie.tmdbId) location.href = `movie-details.html?tmdb=${encodeURIComponent(movie.tmdbId)}`;
+                else if (movie.tmdbId) {
+                    // A catalogue title is a search hint, not a stream. Keep
+                    // the person in the room and resolve it to verified
+                    // YouTube candidates instead of sending them elsewhere.
+                    urlInput.value = movie.title;
+                    searchFullMovies(movie.title);
+                }
             });
             videoSuggestions.appendChild(result);
         }
@@ -1653,7 +1659,7 @@
                 catalogue.forEach(appendMovieResult);
             }
             if (playable.length) {
-                appendSearchSection('Full movies you can play in this room');
+                appendSearchSection('YouTube full-length videos you can play in this room');
                 playable.forEach(appendMovieResult);
             }
             videoSuggestions.classList.toggle('active', catalogue.length + playable.length > 0);
@@ -1703,21 +1709,11 @@
                 })
                 .catch(() => { /* The in-room search can still succeed. */ });
 
-            fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+            fetch(`${SERVER_URL}/api/youtube-videos?q=${encodeURIComponent(query)}`, { signal: controller.signal })
                 .then((response) => response.ok ? response.json() : Promise.reject())
                 .then((data) => {
                     if (requestId !== searchRequest) return;
                     playableResults = data.results || [];
-                    renderSearchResults();
-                    cacheSearchResults(query);
-                    // Archive.org is valuable for public-domain cinema but is
-                    // slow. Merge it in only after the fast results are shown.
-                    return fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}&archive=1`, { signal: controller.signal });
-                })
-                .then((response) => response?.ok ? response.json() : null)
-                .then((data) => {
-                    if (!data || requestId !== searchRequest) return;
-                    playableResults = mergeResults(playableResults, data.results || []);
                     renderSearchResults();
                     cacheSearchResults(query);
                 })
