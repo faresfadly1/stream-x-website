@@ -636,6 +636,7 @@ app.use(express.static(path.join(__dirname)));
 
 const rooms = new Map();
 const ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{6,80}$/;
+const EMPTY_ROOM_TTL_MS = 5 * 60 * 1000;
 
 function cleanRoomId(value) {
     return typeof value === 'string' && ROOM_ID_PATTERN.test(value) ? value : null;
@@ -671,8 +672,18 @@ function createRoom() {
     return {
         users: [],
         media: null,
-        playback: { playing: false, currentTime: 0, volume: 100, updatedAt: Date.now() }
+        playback: { playing: false, currentTime: 0, volume: 100, updatedAt: Date.now() },
+        chatHistory: [],
+        emptyRoomTimer: null
     };
+}
+
+function keepEmptyRoomBriefly(roomId, room) {
+    if (room.emptyRoomTimer) clearTimeout(room.emptyRoomTimer);
+    room.emptyRoomTimer = setTimeout(() => {
+        if (rooms.get(roomId) === room && room.users.length === 0) rooms.delete(roomId);
+    }, EMPTY_ROOM_TTL_MS);
+    room.emptyRoomTimer.unref?.();
 }
 
 function currentPlayback(room) {
@@ -686,7 +697,8 @@ function publishRoomState(roomId, room) {
     io.to(roomId).emit('room-state', {
         users: room.users,
         media: room.media,
-        playback: currentPlayback(room)
+        playback: currentPlayback(room),
+        chatHistory: room.chatHistory
     });
 }
 
@@ -697,6 +709,10 @@ io.on('connection', (socket) => {
 
         if (!rooms.has(roomId)) rooms.set(roomId, createRoom());
         const room = rooms.get(roomId);
+        if (room.emptyRoomTimer) {
+            clearTimeout(room.emptyRoomTimer);
+            room.emptyRoomTimer = null;
+        }
         socket.data.roomId = roomId;
         socket.data.username = cleanName(requestedName);
         socket.join(roomId);
@@ -752,14 +768,22 @@ io.on('connection', (socket) => {
 
     socket.on('request-sync', () => {
         const room = rooms.get(socket.data.roomId);
-        if (room) socket.emit('room-state', { users: room.users, media: room.media, playback: currentPlayback(room) });
+        if (room) socket.emit('room-state', {
+            users: room.users,
+            media: room.media,
+            playback: currentPlayback(room),
+            chatHistory: room.chatHistory
+        });
     });
 
     socket.on('chat-message', (message) => {
         const room = rooms.get(socket.data.roomId);
         const text = typeof message === 'string' ? message.trim().slice(0, 500) : '';
         if (!room || !text) return;
-        io.to(socket.data.roomId).emit('chat-message', { username: socket.data.username, message: text, timestamp: new Date().toISOString() });
+        const chatMessage = { id: crypto.randomUUID(), username: socket.data.username, message: text, timestamp: new Date().toISOString() };
+        room.chatHistory.push(chatMessage);
+        if (room.chatHistory.length > 100) room.chatHistory.splice(0, room.chatHistory.length - 100);
+        io.to(socket.data.roomId).emit('chat-message', chatMessage);
     });
 
     // WebRTC signalling only. Audio itself travels peer-to-peer and is never stored on this server.
@@ -805,7 +829,7 @@ io.on('connection', (socket) => {
         if (!room) return;
         room.users = room.users.filter((user) => user.id !== socket.id);
         if (socket.data.voiceActive) io.to(roomId).emit('voice-peer-left', socket.id);
-        if (room.users.length === 0) rooms.delete(roomId);
+        if (room.users.length === 0) keepEmptyRoomBriefly(roomId, room);
         else {
             publishRoomState(roomId, room);
             io.to(roomId).emit('notice', `${socket.data.username || 'A guest'} left the room`);

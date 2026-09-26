@@ -1148,6 +1148,7 @@
             roomId: null, player: null, media: null, ready: false, suppressUntil: 0,
             lastTime: 0, lastVolume: 100, vimeoPlaying: false, youtubeMonitorTimer: null,
             youtubeObservedTime: 0, youtubeObservedAt: 0, audioUnlocked: false, autoplayMuted: false,
+            chatMessageIds: new Set(),
             voice: { enabled: false, stream: null, peers: new Map() }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1193,9 +1194,10 @@
         socket.on('connect_error', () => setConnectionStatus('Live service unavailable', 'error'));
         socket.on('room-error', (message) => showNotice(message, true));
         socket.on('notice', (message) => addChatMessage('Room', message, true));
-        socket.on('chat-message', (message) => addChatMessage(message.username, message.message));
+        socket.on('chat-message', (message) => addChatMessage(message.username, message.message, false, message.id));
         socket.on('room-state', (room) => {
             updateUsersList(room.users || []);
+            (room.chatHistory || []).forEach((message) => addChatMessage(message.username, message.message, false, message.id));
             if (room.media) loadMedia(room.media, room.playback);
             else showEmptyState();
         });
@@ -1506,7 +1508,9 @@
             document.querySelector('.tab .badge').textContent = users.length;
         }
 
-        function addChatMessage(sender, message, isSystem = false) {
+        function addChatMessage(sender, message, isSystem = false, messageId = null) {
+            if (messageId && state.chatMessageIds.has(messageId)) return;
+            if (messageId) state.chatMessageIds.add(messageId);
             const feed = document.querySelector('.chat-messages');
             const item = document.createElement('div');
             item.style.cssText = `padding:10px;margin-bottom:10px;background:${isSystem ? 'rgba(255,167,36,.1)' : 'rgba(255,255,255,.05)'};border-radius:8px;`;
