@@ -191,10 +191,16 @@ async function searchVimeoCreativeCommonsMovies(query) {
         if (!vimeoResponse.ok) return [];
         const payload = await vimeoResponse.json();
         const allowedLicenses = new Set(['by', 'by-sa', 'by-nc', 'by-nc-sa', 'by-nd', 'by-nc-nd', 'cc0']);
+        const titleQuery = normaliseSearch(query);
+        const notAFullMovie = /\b(trailer|teaser|clip|episode|session|lecture|interview|review|podcast|behind the scenes)\b/i;
         const results = (payload.data || [])
             .map((video) => ({ video, id: vimeoVideoId(video.uri) }))
             .filter(({ video, id }) => id && allowedLicenses.has(video.license) && Number(video.duration) >= 35 * 60)
             .filter(({ video }) => video.privacy?.embed !== 'private' && video.embed?.html !== null)
+            .filter(({ video }) => {
+                const title = normaliseSearch(video.name);
+                return (title === titleQuery || title.startsWith(`${titleQuery} `)) && !notAFullMovie.test(video.name || '');
+            })
             .slice(0, 8)
             .map(({ video, id }) => {
                 const pictures = video.pictures?.sizes || [];
