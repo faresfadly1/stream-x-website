@@ -209,6 +209,25 @@
             border-bottom: none;
         }
 
+        .suggestion-section,
+        .suggestion-status {
+            display: block;
+            padding: 9px 15px;
+            color: var(--light-gray);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .suggestion-status {
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
         .suggestion-item:hover {
             background: rgba(255, 255, 255, 0.05);
         }
@@ -1568,8 +1587,22 @@
 
         let searchTimer;
         let searchRequest = 0;
+        let activeSearchController = null;
         let playableResults = [];
         let catalogueResults = [];
+        const movieSearchCache = new Map();
+
+        function searchCacheKey(query) {
+            return query.toLocaleLowerCase();
+        }
+
+        function cacheSearchResults(query) {
+            movieSearchCache.set(searchCacheKey(query), {
+                catalogue: catalogueResults,
+                playable: playableResults,
+                expiresAt: Date.now() + 5 * 60 * 1000
+            });
+        }
 
         function mergeResults(current, incoming) {
             const known = new Set(current.map((movie) => movie.id));
@@ -1577,73 +1610,116 @@
         }
 
         function renderSearchResults() {
-            showMovieResults([...playableResults, ...catalogueResults]);
+            // Show the comprehensive, current film catalogue first. The smaller
+            // direct-play list is deliberately separate so older public-domain
+            // titles never look like the only movies the user can search for.
+            showMovieResults(catalogueResults, playableResults);
         }
 
-        function showMovieResults(matches) {
-            videoSuggestions.textContent = '';
-            matches.forEach((movie) => {
-                const result = document.createElement('button');
-                result.type = 'button';
-                result.className = 'suggestion-item';
-                result.style.width = '100%';
-                result.innerHTML = `<img class="suggestion-thumbnail" alt=""><div class="suggestion-info"><div class="suggestion-title"></div><div class="suggestion-meta"></div></div>`;
-                const thumbnail = result.querySelector('img');
-                if (movie.poster) thumbnail.src = movie.poster;
-                else thumbnail.hidden = true;
-                result.querySelector('.suggestion-title').textContent = movie.title;
-                const subtitle = `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`;
-                result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
-                const canPlayInRoom = movie.kind === 'playable' && movie.url;
-                result.title = canPlayInRoom
-                    ? 'Play this legal full movie for everyone in the room'
-                    : 'Show official legal viewing options for this movie';
-                result.addEventListener('click', () => {
-                    if (canPlayInRoom) chooseMedia(movie.url, movie.title);
-                    else if (movie.tmdbId) location.href = `movie-details.html?tmdb=${encodeURIComponent(movie.tmdbId)}`;
-                });
-                videoSuggestions.appendChild(result);
+        function appendSearchSection(label) {
+            const heading = document.createElement('div');
+            heading.className = 'suggestion-section';
+            heading.textContent = label;
+            videoSuggestions.appendChild(heading);
+        }
+
+        function appendMovieResult(movie) {
+            const result = document.createElement('button');
+            result.type = 'button';
+            result.className = 'suggestion-item';
+            result.style.width = '100%';
+            result.innerHTML = `<img class="suggestion-thumbnail" alt=""><div class="suggestion-info"><div class="suggestion-title"></div><div class="suggestion-meta"></div></div>`;
+            const thumbnail = result.querySelector('img');
+            if (movie.poster) thumbnail.src = movie.poster;
+            else thumbnail.hidden = true;
+            result.querySelector('.suggestion-title').textContent = movie.title;
+            const subtitle = `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`;
+            result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
+            const canPlayInRoom = movie.kind === 'playable' && movie.url;
+            result.title = canPlayInRoom
+                ? 'Play this legal full movie for everyone in the room'
+                : 'Show official legal viewing options for this movie';
+            result.addEventListener('click', () => {
+                if (canPlayInRoom) chooseMedia(movie.url, movie.title);
+                else if (movie.tmdbId) location.href = `movie-details.html?tmdb=${encodeURIComponent(movie.tmdbId)}`;
             });
-            videoSuggestions.classList.toggle('active', matches.length > 0);
+            videoSuggestions.appendChild(result);
         }
 
-        function searchFullMovies(query) {
+        function showMovieResults(catalogue = [], playable = []) {
+            videoSuggestions.textContent = '';
+            if (catalogue.length) {
+                appendSearchSection('All movie titles');
+                catalogue.forEach(appendMovieResult);
+            }
+            if (playable.length) {
+                appendSearchSection('Full movies you can play in this room');
+                playable.forEach(appendMovieResult);
+            }
+            videoSuggestions.classList.toggle('active', catalogue.length + playable.length > 0);
+        }
+
+        function showSearchStatus(message) {
+            videoSuggestions.textContent = '';
+            const status = document.createElement('div');
+            status.className = 'suggestion-status';
+            status.textContent = message;
+            videoSuggestions.appendChild(status);
+            videoSuggestions.classList.add('active');
+        }
+
+        function searchFullMovies(rawQuery) {
+            const query = rawQuery.trim();
             const requestId = ++searchRequest;
+            activeSearchController?.abort();
+            activeSearchController = null;
             if (query.length < 2) {
                 playableResults = [];
                 catalogueResults = [];
-                showMovieResults([]);
+                showMovieResults();
                 return;
             }
+            const cached = movieSearchCache.get(searchCacheKey(query));
+            if (cached && cached.expiresAt > Date.now()) {
+                catalogueResults = cached.catalogue;
+                playableResults = cached.playable;
+                renderSearchResults();
+                return;
+            }
+            const controller = new AbortController();
+            activeSearchController = controller;
             playableResults = [];
             catalogueResults = [];
-            showMovieResults([]);
+            showSearchStatus(`Searching every movie title for “${query}”…`);
             // Search the comprehensive title catalogue alongside the legal
             // in-room catalogue. Whichever responds first renders first.
-            fetch(`${SERVER_URL}/api/movie-catalogue?q=${encodeURIComponent(query)}`)
+            fetch(`${SERVER_URL}/api/movie-catalogue?q=${encodeURIComponent(query)}`, { signal: controller.signal })
                 .then((response) => response.ok ? response.json() : Promise.reject())
                 .then((data) => {
                     if (requestId !== searchRequest) return;
                     catalogueResults = data.results || [];
                     renderSearchResults();
+                    cacheSearchResults(query);
                 })
                 .catch(() => { /* The in-room search can still succeed. */ });
 
-            fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}`)
+            fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}`, { signal: controller.signal })
                 .then((response) => response.ok ? response.json() : Promise.reject())
                 .then((data) => {
                     if (requestId !== searchRequest) return;
                     playableResults = data.results || [];
                     renderSearchResults();
+                    cacheSearchResults(query);
                     // Archive.org is valuable for public-domain cinema but is
                     // slow. Merge it in only after the fast results are shown.
-                    return fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}&archive=1`);
+                    return fetch(`${SERVER_URL}/api/legal-movies?q=${encodeURIComponent(query)}&archive=1`, { signal: controller.signal });
                 })
                 .then((response) => response?.ok ? response.json() : null)
                 .then((data) => {
                     if (!data || requestId !== searchRequest) return;
                     playableResults = mergeResults(playableResults, data.results || []);
                     renderSearchResults();
+                    cacheSearchResults(query);
                 })
                 .catch(() => {
                     if (requestId === searchRequest && !catalogueResults.length) {
@@ -1664,9 +1740,11 @@
             if (urlInput.value.trim().length >= 2) searchFullMovies(urlInput.value.trim());
         });
         urlInput.addEventListener('input', () => {
-            const value = urlInput.value.trim();
+            // Never replace the field value while a result is being fetched;
+            // keeping the exact typed text also makes correcting a title easy.
+            const value = urlInput.value;
             clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => searchFullMovies(value), 450);
+            searchTimer = setTimeout(() => searchFullMovies(value), 200);
         });
         document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
         urlInput.addEventListener('keydown', (event) => {
