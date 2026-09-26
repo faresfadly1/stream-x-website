@@ -251,10 +251,11 @@ function iso8601DurationSeconds(value) {
         + (Number(match[4]) || 0);
 }
 
-// YouTube's search API is restricted to Creative Commons, public, embeddable,
-// long-form videos. This avoids treating every upload returned by a title query
-// as a film Stream X has permission to show in a shared room.
-async function searchYoutubeCreativeCommonsVideos(query) {
+// Use YouTube's official discovery API and return only public, embeddable,
+// long-form videos. A standard YouTube licence is still valid for an official
+// YouTube embed when the uploader has enabled embedding; it is not a claim that
+// Stream X owns distribution rights to the work.
+async function searchYoutubeEmbeddableVideos(query) {
     if (!YOUTUBE_DATA_API_KEY || query.length < 2) return [];
     const cacheKey = query.toLowerCase();
     const cached = youtubeMovieSearchCache.get(cacheKey);
@@ -274,8 +275,7 @@ async function searchYoutubeCreativeCommonsVideos(query) {
             safeSearch: 'strict',
             videoDuration: 'long',
             videoEmbeddable: 'true',
-            videoSyndicated: 'true',
-            videoLicense: 'creativeCommon'
+            videoSyndicated: 'true'
         });
         const searchResponse = await fetch(searchUrl, { signal: controller.signal });
         if (!searchResponse.ok) return [];
@@ -292,27 +292,21 @@ async function searchYoutubeCreativeCommonsVideos(query) {
         const videosResponse = await fetch(videosUrl, { signal: controller.signal });
         if (!videosResponse.ok) return [];
         const videosPayload = await videosResponse.json();
-        const titleQuery = normaliseSearch(query);
-        const queryWords = titleQuery.split(' ').filter((word) => word.length >= 2);
         const notAFullVideo = /\b(trailer|teaser|clip|short|scene|review|reaction|recap|explained|behind the scenes|interview|music video)\b/i;
         const results = (videosPayload.items || [])
             .filter((video) => video.id && video.status?.embeddable && video.status?.privacyStatus === 'public')
-            .filter((video) => iso8601DurationSeconds(video.contentDetails?.duration) >= 35 * 60)
+            .filter((video) => iso8601DurationSeconds(video.contentDetails?.duration) >= 20 * 60)
             .filter((video) => !notAFullVideo.test(video.snippet?.title || ''))
-            .filter((video) => {
-                const title = normaliseSearch(video.snippet?.title);
-                return !queryWords.length || queryWords.every((word) => title.includes(word));
-            })
             .slice(0, 12)
             .map((video) => ({
                 id: `youtube-${video.id}`,
                 kind: 'playable',
                 title: video.snippet?.title || 'YouTube video',
                 year: (video.snippet?.publishedAt || '').slice(0, 4),
-                description: `Creative Commons long-form video · ${video.snippet?.channelTitle || 'YouTube'}`,
+                description: `Embeddable long-form YouTube video · ${video.snippet?.channelTitle || 'YouTube'}`,
                 poster: video.snippet?.thumbnails?.medium?.url || video.snippet?.thumbnails?.default?.url || '',
                 url: `https://www.youtube.com/watch?v=${video.id}`,
-                actionLabel: 'YouTube Creative Commons · full-length',
+                actionLabel: 'YouTube · plays in room',
                 source: 'YouTube'
             }));
         youtubeMovieSearchCache.set(cacheKey, { results, expiresAt: Date.now() + 10 * 60 * 1000 });
@@ -597,8 +591,8 @@ app.get('/api/youtube-videos', async (request, response) => {
     if (!YOUTUBE_DATA_API_KEY) {
         return response.status(503).json({ error: 'YouTube search has not been configured yet.', results: [] });
     }
-    const results = await searchYoutubeCreativeCommonsVideos(query);
-    response.json({ results, message: 'Results are public, embeddable, Creative Commons long-form YouTube videos.' });
+    const results = await searchYoutubeEmbeddableVideos(query);
+    response.json({ results, message: 'Results are public, embeddable, long-form YouTube videos.' });
 });
 app.get('/api/legal-movies', async (request, response) => {
     const rawQuery = String(request.query.q || '').trim().slice(0, 80);

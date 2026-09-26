@@ -1709,8 +1709,8 @@
                 : `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`;
             result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
             result.title = canPlayInRoom
-                ? 'Play this legal full movie for everyone in the room'
-                : 'Search YouTube Creative Commons videos without leaving this room';
+                ? 'Play this YouTube video for everyone in the room'
+                : 'Search playable YouTube videos without leaving this room';
             result.addEventListener('click', () => {
                 if (canPlayInRoom) chooseMedia(movie.url, movie.title);
                 else if (movie.tmdbId) {
@@ -1731,13 +1731,13 @@
                 catalogue.forEach(appendMovieResult);
             }
             if (playable.length) {
-                appendSearchSection('YouTube full-length videos you can play in this room');
+                appendSearchSection('YouTube videos you can play in this room');
                 playable.forEach(appendMovieResult);
             }
             if (catalogue.length && !playable.length) {
                 const status = document.createElement('div');
                 status.className = 'suggestion-status';
-                status.textContent = 'No embeddable, full-length Creative Commons video was found for this title on YouTube.';
+                status.textContent = 'No public, embeddable long-form YouTube video was found for this title.';
                 videoSuggestions.appendChild(status);
             }
             videoSuggestions.classList.toggle('active', catalogue.length + playable.length > 0);
