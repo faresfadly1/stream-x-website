@@ -719,14 +719,6 @@ io.on('connection', (socket) => {
         room.users = room.users.filter((user) => user.id !== socket.id);
         room.users.push({ id: socket.id, username: socket.data.username });
         publishRoomState(roomId, room);
-        // Everyone in a room is an audio listener by default. Existing speakers
-        // are asked to create a WebRTC connection to the newcomer; no microphone
-        // permission is needed to receive audio.
-        for (const peerId of io.sockets.adapter.rooms.get(roomId) || []) {
-            if (peerId === socket.id) continue;
-            const peer = io.sockets.sockets.get(peerId);
-            if (peer?.data.voiceActive) peer.emit('voice-peer-joined', socket.id);
-        }
         socket.to(roomId).emit('notice', `${socket.data.username} joined the room`);
     });
 
@@ -786,46 +778,36 @@ io.on('connection', (socket) => {
         io.to(socket.data.roomId).emit('chat-message', chatMessage);
     });
 
-    // WebRTC signalling only. Audio itself travels peer-to-peer and is never stored on this server.
+    // Voice PCM is relayed by the room server. This works on networks where a
+    // direct WebRTC peer connection cannot cross NAT without a paid TURN relay.
     // A participant may listen without enabling their microphone.
     socket.on('voice-join', () => {
         const roomId = socket.data.roomId;
-        const members = io.sockets.adapter.rooms.get(roomId);
-        if (!members) return;
+        if (!roomId) return;
         socket.data.voiceActive = true;
-        for (const peerId of members) {
-            if (peerId === socket.id) continue;
-            // Exactly one side starts a WebRTC negotiation. Without this, two
-            // people enabling Voice at the same instant can both send an offer
-            // and race each other before either audio channel is established.
-            const peer = io.sockets.sockets.get(peerId);
-            if (!peer) continue;
-            const initiator = socket.id.localeCompare(peerId) < 0 ? socket : peer;
-            const targetId = initiator === socket ? peerId : socket.id;
-            initiator.emit('voice-peer-joined', targetId);
-        }
         socket.to(roomId).emit('voice-presence', { id: socket.id, active: true });
     });
 
     socket.on('voice-leave', () => {
         if (!socket.data.roomId) return;
         socket.data.voiceActive = false;
-        socket.to(socket.data.roomId).emit('voice-peer-left', socket.id);
         socket.to(socket.data.roomId).emit('voice-presence', { id: socket.id, active: false });
-        // Keep the former speaker as a listener: every remaining speaker opens a
-        // fresh receive channel after the old bidirectional one is closed.
-        for (const peerId of io.sockets.adapter.rooms.get(socket.data.roomId) || []) {
-            const peer = io.sockets.sockets.get(peerId);
-            if (peerId !== socket.id && peer?.data.voiceActive) peer.emit('voice-peer-joined', socket.id);
-        }
     });
 
-    socket.on('voice-signal', ({ target, signal } = {}) => {
+    socket.on('voice-audio', (payload) => {
         const roomId = socket.data.roomId;
-        const recipient = io.sockets.sockets.get(target);
-        if (!roomId || !recipient || recipient.data.roomId !== roomId) return;
-        if (!signal || typeof signal !== 'object' || JSON.stringify(signal).length > 16000) return;
-        recipient.emit('voice-signal', { from: socket.id, signal });
+        if (!roomId || !socket.data.voiceActive) return;
+        const audio = Buffer.isBuffer(payload)
+            ? payload
+            : ArrayBuffer.isView(payload)
+                ? Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength)
+                : payload instanceof ArrayBuffer
+                    ? Buffer.from(payload)
+                    : null;
+        // At 24 kHz mono PCM, a normal 4096-sample browser block is 4096 bytes.
+        // Keep a firm bound so a client cannot use this event as arbitrary upload.
+        if (!audio || audio.length < 2 || audio.length > 16384 || audio.length % 2) return;
+        socket.to(roomId).volatile.emit('voice-audio', { from: socket.id, data: audio });
     });
 
     socket.on('disconnect', () => {
@@ -833,7 +815,6 @@ io.on('connection', (socket) => {
         const room = rooms.get(roomId);
         if (!room) return;
         room.users = room.users.filter((user) => user.id !== socket.id);
-        if (socket.data.voiceActive) io.to(roomId).emit('voice-peer-left', socket.id);
         if (room.users.length === 0) keepEmptyRoomBriefly(roomId, room);
         else {
             publishRoomState(roomId, room);
