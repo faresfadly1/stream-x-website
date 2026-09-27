@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const RoomPlaybackSync = require('../room-sync.js');
+const RoomVoiceEncoder = require('../room-audio.js');
 
 test('playback follows elapsed time, not differently set device clocks', () => {
     let elapsed = 0;
@@ -52,7 +53,7 @@ function room() {
         pauseVideo(){this.code=2;this.commands.push(['pause']);this.events.onStateChange({data:2});}
     };
     const sandbox = {
-        console,URL,URLSearchParams,Uint32Array,Map,Set,
+        console,URL,URLSearchParams,Uint32Array,Int16Array,Float32Array,ArrayBuffer,Map,Set,RoomVoiceEncoder,
         RoomPlaybackSync: class extends RoomPlaybackSync {constructor(){super(()=>now);}},
         performance:{now:()=>now},
         location:{hostname:'localhost',search:'?room=regression-test',pathname:'/room.html'},
@@ -166,4 +167,95 @@ test('an explicit remote pause still interrupts buffering immediately', () => {
     r.tick(100);r.callbacks['playback-action']({type:'pause',playback:r.snapshot()});
     assert.equal(r.player.code,2);
     assert.equal(r.actions().length,0);
+});
+
+test('speech ducks only the local output and restores the original shared volume', () => {
+    const r=room();r.state(r.snapshot({volume:80}));r.ready();
+    r.run("noteSpeech('friend')");
+    assert.equal(r.player.volume,20);
+    r.run('monitorYouTubePlayback()');
+    assert.equal(r.actions().length,0);
+    r.tick(700);r.run('updateFilmDucking(); monitorYouTubePlayback()');
+    assert.equal(r.player.volume,80);
+    assert.equal(r.actions().length,0);
+});
+
+test('overlapping speakers hold ducking until the last person stops', () => {
+    const r=room();r.state(r.snapshot());r.ready();
+    r.run("noteSpeech('local')");r.tick(400);r.run("noteSpeech('friend')");
+    r.tick(300);r.run('updateFilmDucking()');assert.equal(r.player.volume,25);
+    r.tick(400);r.run('updateFilmDucking()');assert.equal(r.player.volume,100);
+});
+
+test('a new shared volume during speech is restored after silence, including mute', () => {
+    const r=room();r.state(r.snapshot());r.ready();r.run("noteSpeech('friend')");
+    r.tick(100);r.callbacks['playback-action']({type:'volume',playback:r.snapshot({volume:40})});
+    assert.equal(r.player.volume,10);r.run('monitorYouTubePlayback()');
+    assert.equal(r.actions().length,0);
+    r.tick(700);r.run('updateFilmDucking(); monitorYouTubePlayback()');
+    assert.equal(r.player.volume,40);assert.equal(r.actions().length,0);
+    r.player.muted=true;r.run('monitorYouTubePlayback()');
+    assert.equal(r.actions().at(-1)[1].volume,0);
+    r.run("noteSpeech('friend')");r.tick(700);r.run('updateFilmDucking()');
+    assert.equal(r.player.muted,true);assert.equal(r.run('playerVolume()'),0);
+});
+
+test('manual volume while ducked stays a shared user action, not a ducking echo', () => {
+    const r=room();r.state(r.snapshot());r.ready();r.run("noteSpeech('friend'); monitorYouTubePlayback()");
+    r.player.volume=10;r.tick(200);r.run('monitorYouTubePlayback()');
+    assert.equal(r.actions().at(-1)[1].volume,40);
+    r.tick(800);r.run('updateFilmDucking(); monitorYouTubePlayback()');
+    assert.equal(r.player.volume,40);assert.equal(r.actions().length,1);
+});
+
+test('a delayed volume API response does not cancel ducking or emit a false action', () => {
+    const r=room();r.state(r.snapshot());r.ready();
+    r.player.setVolume=function(volume){this.pendingVolume=volume;};
+    r.run("noteSpeech('friend'); monitorYouTubePlayback()");
+    assert.equal(r.actions().length,0);
+    r.player.volume=r.player.pendingVolume;r.tick(200);r.run('monitorYouTubePlayback()');
+    assert.equal(r.actions().length,0);
+    r.tick(700);r.run('updateFilmDucking(); monitorYouTubePlayback()');
+    assert.equal(r.actions().length,0);assert.equal(r.player.pendingVolume,100);
+});
+
+test('buffer stalls never broadcast a rewind to everyone', () => {
+    const r=room();r.state(r.snapshot({playing:true,currentTime:10}));r.ready();
+    r.run('monitorYouTubePlayback()');r.tick(1000);r.run('monitorYouTubePlayback()');
+    assert.equal(r.actions().length,0);
+});
+
+test('routine drift checks do not rewind one second or seek again while settling', () => {
+    const r=room();r.state(r.snapshot({playing:true,currentTime:10}));r.ready();
+    r.tick(2500);r.player.time=13.5;r.player.commands=[];r.state(r.snapshot({playing:true,currentTime:12.5}));
+    assert.equal(r.player.commands.filter(([type])=>type==='seek').length,0);
+    r.tick(2000);r.player.time=13.5;r.state(r.snapshot({playing:true,currentTime:16}));
+    assert.equal(r.player.commands.filter(([type])=>type==='seek').length,1);
+    r.tick(200);r.player.time=13.5;r.state(r.snapshot({playing:true,currentTime:16.2}));
+    assert.equal(r.player.commands.filter(([type])=>type==='seek').length,1);
+});
+
+test('volume commands never seek or restart a buffering player', () => {
+    const r=room();r.state(r.snapshot({playing:true}));r.ready();r.player.code=3;r.player.commands=[];
+    r.tick(4000);r.callbacks['playback-action']({type:'volume',playback:r.snapshot({playing:true,currentTime:4,volume:50})});
+    assert.deepEqual(r.player.commands,[['volume',50]]);
+});
+
+test('a microphone-off listener plays incoming speech and ducks the film without sending actions', () => {
+    const r=room();r.state(r.snapshot());r.ready();
+    r.run(`
+        state.voice.relay.context = {
+            state:'running',currentTime:0,
+            createBuffer(channels,length,rate){return {duration:length/rate,getChannelData(){return new Float32Array(length);}};},
+            createBufferSource(){return {connect(){},disconnect(){},start(){state.testVoicePlayed=true;}};},
+            createDynamicsCompressor(){return {threshold:{},knee:{},ratio:{},attack:{},release:{},connect(){}};}
+        };
+        playRelayedVoice('friend',new Int16Array(1024).fill(6000).buffer);
+        monitorYouTubePlayback();
+    `);
+    assert.equal(r.run('state.voice.enabled'),false);
+    assert.equal(r.run('state.testVoicePlayed'),true);
+    assert.equal(r.player.volume,25);assert.equal(r.actions().length,0);
+    r.tick(1000);r.run('updateFilmDucking(); monitorYouTubePlayback()');
+    assert.equal(r.player.volume,100);assert.equal(r.actions().length,0);
 });

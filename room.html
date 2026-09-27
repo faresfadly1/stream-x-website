@@ -9,6 +9,7 @@
     <script src="https://player.vimeo.com/api/player.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="room-sync.js?v=1"></script>
+    <script src="room-audio.js?v=1"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -1475,12 +1476,13 @@
             chatMessageIds: new Set(), sync: new RoomPlaybackSync(), mediaGeneration: 0,
             syncRequestAt: null, transitMs: 0, localActionAt: -Infinity,
             remoteSeek: null, remoteVolume: null, observedPlaying: false, cuedTime: null,
+            effectiveVolume: 100, ducked: false, speakers: new Map(), vimeoVolume: 100,
             voice: {
                 enabled: false,
                 stream: null,
                 // Relay is the reliable voice path. It avoids WebRTC's
                 // peer-to-peer NAT/TURN failures on mobile networks.
-                relay: { context: null, source: null, processor: null, silence: null, playbackAt: new Map() }
+                relay: { context: null, source: null, processor: null, silence: null, playbackAt: new Map(), generation: 0 }
             }
         };
         const videoFrame = document.getElementById('videoFrame');
@@ -1599,6 +1601,8 @@
             state.youtubeObservedAt = 0;
             state.remoteSeek = null;
             state.remoteVolume = null;
+            state.effectiveVolume = 100;
+            state.lastVolume = 100;
             state.cuedTime = null;
             state.sync.reset();
             state.player = null;
@@ -1636,8 +1640,8 @@
             let videoReady = false;
             if (state.autoplayMuted && state.media?.type === 'youtube' && state.player) {
                 state.player.unMute();
-                state.player.setVolume(state.lastVolume);
                 state.autoplayMuted = false;
+                applyFilmVolume();
                 videoReady = true;
             }
             if (voiceReady || videoReady) soundBtn.hidden = true;
@@ -1718,7 +1722,7 @@
                     player.on('pause', () => { state.vimeoPlaying = false; emitPlayback('pause'); });
                     player.on('seeked', () => emitPlayback('seek'));
                     player.on('timeupdate', (data) => { state.lastTime = Number(data.seconds) || state.lastTime; });
-                    player.on('volumechange', (data) => { state.lastVolume = Math.round((Number(data.volume) || 0) * 100); emitPlayback('volume'); });
+                    player.on('volumechange', (data) => { state.vimeoVolume = Math.round((Number(data.volume) || 0) * 100); emitPlayback('volume'); });
                 };
                 if (window.Vimeo?.Player) createVimeoPlayer();
                 else {
@@ -1758,11 +1762,64 @@
                 : Number(state.player.currentTime) || 0;
         }
 
-        function playerVolume() {
-            if (state.media?.type === 'vimeo') return state.lastVolume;
+        function rawPlayerVolume() {
+            if (state.media?.type === 'vimeo') return state.vimeoVolume;
             if (state.media?.type === 'youtube') return state.player.isMuted() && !state.autoplayMuted ? 0 : state.player.getVolume();
             return state.player.muted ? 0 : Math.round(state.player.volume * 100);
         }
+
+        function logicalFilmVolume(raw) {
+            // API writes are asynchronous. Do not turn automatic ducking (or
+            // the old value observed before a write completes) into room actions.
+            if (state.remoteVolume) {
+                const pending = state.remoteVolume;
+                if (Math.abs(raw - pending.target) < 1) state.remoteVolume = null;
+                else if (performance.now() < pending.until && Math.abs(raw - pending.previous) < 1) return state.lastVolume;
+                else state.remoteVolume = null;
+            }
+            if (Math.abs(raw - state.effectiveVolume) >= 1) {
+                state.lastVolume = Math.min(100, Math.max(0, raw / (state.ducked ? 0.25 : 1)));
+                state.effectiveVolume = raw;
+            }
+            return state.lastVolume;
+        }
+
+        function playerVolume() { return logicalFilmVolume(rawPlayerVolume()); }
+
+        function applyFilmVolume() {
+            if (!state.ready || !state.player) return;
+            const previous = rawPlayerVolume();
+            const volume = Math.round(state.lastVolume * (state.ducked ? 0.25 : 1));
+            state.effectiveVolume = volume;
+            if (Math.abs(previous - volume) < 1) return;
+            state.remoteVolume = {previous, target: volume, until: performance.now() + 1500};
+            if (state.media.type === 'youtube') {
+                state.player.setVolume(volume);
+                if (volume > 0 && !state.autoplayMuted) state.player.unMute();
+            } else if (state.media.type === 'vimeo') {
+                state.player.setVolume(volume / 100).catch(() => {});
+            } else {
+                state.player.volume = volume / 100;
+                if (volume > 0) state.player.muted = false;
+            }
+        }
+
+        function noteSpeech(peerId, durationMs = 0) {
+            state.speakers.set(peerId, performance.now() + durationMs + 600);
+            updateFilmDucking();
+        }
+
+        function updateFilmDucking() {
+            const now = performance.now();
+            for (const [peer, until] of state.speakers) if (until <= now) state.speakers.delete(peer);
+            const ducked = state.speakers.size > 0;
+            if (ducked === state.ducked) return;
+            // Capture an intentional slider change before changing the multiplier.
+            if (state.ready && state.player) playerVolume();
+            state.ducked = ducked;
+            applyFilmVolume();
+        }
+        setInterval(updateFilmDucking, 100);
 
         function isPlaying() {
             if (state.media?.type === 'vimeo') return state.vimeoPlaying;
@@ -1780,12 +1837,9 @@
                 // A remote command produces player events too. Ignore only
                 // matching echoes, not the next second of genuine controls.
                 if (state.sync.matches(type, current)) {
-                    if (type === 'volume') state.remoteVolume = null;
-                    if (type === 'seek') state.remoteSeek = null;
                     return;
                 }
                 if (type === 'seek' && matchesRemoteSeek(current.currentTime)) return;
-                if (type === 'volume' && matchesPendingVolume(current.volume)) return;
                 state.sync.local(type, current);
                 state.localActionAt = performance.now();
                 state.lastTime = current.currentTime;
@@ -1797,7 +1851,7 @@
                     state.player.getCurrentTime().catch(() => state.lastTime),
                     state.player.getVolume().catch(() => state.lastVolume / 100)
                 ]).then(([currentTime, volume]) => {
-                    publish(currentTime, Number(volume) * 100);
+                    publish(currentTime, logicalFilmVolume(Number(volume) * 100));
                 });
                 return;
             }
@@ -1812,16 +1866,6 @@
             return Math.abs(time - (target?.currentTime ?? pending.time)) < 1.5;
         }
 
-        function matchesPendingVolume(volume) {
-            const pending = state.remoteVolume;
-            if (!pending) return false;
-            if (Math.abs(volume - pending.target) < 1 || performance.now() > pending.until) {
-                state.remoteVolume = null;
-                return false;
-            }
-            return Math.abs(volume - pending.previous) < 1;
-        }
-
         function monitorYouTubePlayback() {
             if (!state.ready || state.unloading || state.media?.type !== 'youtube') return;
             const now = performance.now();
@@ -1829,7 +1873,11 @@
             const elapsed = (now - state.youtubeObservedAt) / 1000;
             const expected = state.youtubeObservedTime + (state.observedPlaying ? elapsed : 0);
             // Background-tab throttling and buffering are not user seeks.
-            if (state.youtubeObservedAt && elapsed < 1.5 && Math.abs(current - expected) > 0.65) emitPlayback('seek');
+            // A stalled player is not a backwards seek. Only a real time jump
+            // (backwards from the previous sample, or forward past elapsed time)
+            // can become a room-wide seek.
+            if (state.youtubeObservedAt && elapsed < 1.5 &&
+                (current < state.youtubeObservedTime - 0.65 || current > expected + 0.65)) emitPlayback('seek');
             emitPlayback('volume');
             state.youtubeObservedTime = current;
             state.youtubeObservedAt = now;
@@ -1845,18 +1893,27 @@
             const generation = state.mediaGeneration;
             const target = state.sync.target();
             const time = target.currentTime;
-            const seekThreshold = type === 'seek' ? 0.05 : (target.playing ? 0.6 : 0.1);
+            state.lastVolume = target.volume;
+            applyFilmVolume();
+            // Changing volume must never seek or pause a buffering movie.
+            if (type === 'volume') return;
+            const seekThreshold = type === 'seek' ? 0.05 : (target.playing ? 0.3 : 0.1);
+            const shouldSeek = (current, destination) => {
+                if (type === 'snapshot' && target.playing) {
+                    if (state.remoteSeek && performance.now() < state.remoteSeek.until) return false;
+                    // YouTube seeks to keyframes. Chasing sub-second jitter
+                    // with seekTo repeatedly replays the same bit of dialogue.
+                    return destination - current > 1 || current - destination > 2;
+                }
+                return Math.abs(current - destination) > seekThreshold;
+            };
             if (state.media.type === 'vimeo') {
                 const player = state.player;
                 Promise.all([player.getCurrentTime(), player.getVolume(), player.getPaused()])
                     .then(async ([current, volume, paused]) => {
                         if (generation !== state.mediaGeneration) return;
                         const latest = state.sync.target();
-                        if (Math.abs(volume * 100 - latest.volume) >= 1) {
-                            state.remoteVolume = {previous: volume * 100, target: latest.volume, until: performance.now() + 1500};
-                            await player.setVolume(latest.volume / 100);
-                        }
-                        if (Math.abs(current - latest.currentTime) > seekThreshold) {
+                        if (shouldSeek(current, latest.currentTime)) {
                             state.remoteSeek = {time: latest.currentTime, until: performance.now() + 1500};
                             await player.setCurrentTime(latest.currentTime);
                         }
@@ -1867,17 +1924,6 @@
                     })
                     .catch(() => showNotice('Press play once to enable this Vimeo video in your browser.'));
                 return;
-            }
-            const volume = playerVolume();
-            if (Math.abs(volume - target.volume) >= 1) {
-                state.remoteVolume = {previous: volume, target: target.volume, until: performance.now() + 1500};
-                if (state.media.type === 'youtube') {
-                    state.player.setVolume(target.volume);
-                    if (target.volume > 0 && !state.autoplayMuted) state.player.unMute();
-                } else {
-                    state.player.volume = target.volume / 100;
-                    if (target.volume > 0) state.player.muted = false;
-                }
             }
             const current = playerTime();
             const youtubeState = state.media.type === 'youtube' ? state.player.getPlayerState() : null;
@@ -1894,7 +1940,7 @@
                     return;
                 }
             }
-            const needsSeek = Math.abs(current - time) > seekThreshold;
+            const needsSeek = shouldSeek(current, time);
             if (needsSeek) {
                 state.remoteSeek = {time, until: performance.now() + 1500};
                 state.player.seekTo ? state.player.seekTo(time, true) : (state.player.currentTime = time);
@@ -1992,9 +2038,10 @@
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true,
+                        // Automatic gain can amplify room hiss during silence.
+                        autoGainControl: false,
                         sampleRate: { ideal: 48000 },
-                        channelCount: { ideal: 2 },
+                        channelCount: { ideal: 1 },
                         latency: { ideal: 0.01 }
                     },
                     video: false
@@ -2003,9 +2050,9 @@
                 state.voice.stream = stream;
                 state.voice.enabled = true;
                 await startVoiceRelay(stream);
+                if (!state.voice.enabled || state.voice.stream !== stream) return;
                 updateVoiceButton();
                 socket.emit('voice-join');
-                showNotice('Voice is on. Your voice is being sent through the room service.');
             } catch (error) {
                 stopVoiceRelay();
                 state.voice.stream?.getTracks().forEach((track) => track.stop());
@@ -2031,51 +2078,69 @@
             return state.voice.relay.context;
         }
 
-        function downsampleVoice(input, inputRate) {
-            const ratio = inputRate / RELAY_SAMPLE_RATE;
-            const size = Math.max(1, Math.floor(input.length / ratio));
-            const output = new Int16Array(size);
-            for (let index = 0; index < size; index += 1) {
-                const start = Math.floor(index * ratio);
-                const end = Math.min(input.length, Math.floor((index + 1) * ratio));
-                let sum = 0;
-                for (let sample = start; sample < end; sample += 1) sum += input[sample];
-                const value = sum / Math.max(1, end - start);
-                output[index] = Math.max(-1, Math.min(1, value)) * 0x7fff;
-            }
-            return output;
-        }
-
         async function startVoiceRelay(stream) {
             const relay = state.voice.relay;
             const context = voiceRelayContext();
             await context.resume();
             stopVoiceRelay();
+            const generation = relay.generation;
             relay.source = context.createMediaStreamSource(stream);
-            relay.processor = context.createScriptProcessor(RELAY_PROCESSOR_SAMPLES, 1, 1);
+            relay.highpass = context.createBiquadFilter();
+            relay.highpass.type = 'highpass';
+            relay.highpass.frequency.value = 90;
+            relay.lowpass = context.createBiquadFilter();
+            relay.lowpass.type = 'lowpass';
+            relay.lowpass.frequency.value = 8000;
+            const send = ({ data, speaking }) => {
+                if (generation !== relay.generation || !state.voice.enabled || !socket.connected) return;
+                if (speaking) noteSpeech('local');
+                // Never queue microphone audio while reconnecting or under
+                // transport backpressure: stale speech is worse than a gap.
+                socket.volatile.compress(false).emit('voice-audio', data);
+            };
+            if (context.audioWorklet && window.AudioWorkletNode) {
+                try {
+                    if (!relay.workletLoaded) {
+                        await context.audioWorklet.addModule('room-voice-processor.js?v=1');
+                        relay.workletLoaded = true;
+                    }
+                    if (generation !== relay.generation) return;
+                    relay.processor = new AudioWorkletNode(context, 'room-voice', {channelCount: 1});
+                    relay.processor.port.onmessage = ({data}) => send(data);
+                } catch (_) { /* Older browsers use the same encoder below. */ }
+            }
+            if (generation !== relay.generation) return;
+            if (!relay.processor) {
+                const encoder = new RoomVoiceEncoder(context.sampleRate);
+                relay.processor = context.createScriptProcessor(RELAY_PROCESSOR_SAMPLES, 1, 1);
+                relay.processor.onaudioprocess = ({inputBuffer}) => {
+                    for (const {pcm, speaking} of encoder.push(inputBuffer.getChannelData(0))) send({data: pcm.buffer, speaking});
+                };
+            }
             relay.silence = context.createGain();
             relay.silence.gain.value = 0;
-            relay.processor.onaudioprocess = ({ inputBuffer }) => {
-                if (!state.voice.enabled || !socket.connected) return;
-                const pcm = downsampleVoice(inputBuffer.getChannelData(0), context.sampleRate);
-                // PCM does not benefit from per-message compression. Skipping
-                // it avoids CPU spikes that can make the movie and voice stutter.
-                socket.compress(false).emit('voice-audio', pcm.buffer);
-            };
-            relay.source.connect(relay.processor);
+            relay.source.connect(relay.highpass);
+            relay.highpass.connect(relay.lowpass);
+            relay.lowpass.connect(relay.processor);
             relay.processor.connect(relay.silence);
             relay.silence.connect(context.destination);
         }
 
         function stopVoiceRelay() {
             const relay = state.voice.relay;
+            relay.generation += 1;
             if (relay.processor) relay.processor.onaudioprocess = null;
+            if (relay.processor?.port) { relay.processor.port.onmessage = null; relay.processor.port.close(); }
             relay.source?.disconnect();
+            relay.highpass?.disconnect();
+            relay.lowpass?.disconnect();
             relay.processor?.disconnect();
             relay.silence?.disconnect();
             relay.source = null;
             relay.processor = null;
             relay.silence = null;
+            state.speakers.delete('local');
+            updateFilmDucking();
         }
 
         function relayBytes(data) {
@@ -2096,11 +2161,28 @@
             const pcm = new Int16Array(bytes);
             const audio = context.createBuffer(1, pcm.length, RELAY_SAMPLE_RATE);
             const samples = audio.getChannelData(0);
-            for (let index = 0; index < pcm.length; index += 1) samples[index] = pcm[index] / 0x8000;
+            let energy = 0;
+            for (let index = 0; index < pcm.length; index += 1) {
+                samples[index] = pcm[index] / 0x8000;
+                energy += samples[index] * samples[index];
+            }
+            // Also filter silence from peers that still have an older page open.
+            if (Math.sqrt(energy / pcm.length) < 0.002) return;
             const source = context.createBufferSource();
             source.buffer = audio;
-            source.connect(context.destination);
             const relay = state.voice.relay;
+            if (!relay.output) {
+                // Limit the combined voices, never the movie soundtrack.
+                relay.output = context.createDynamicsCompressor();
+                relay.output.threshold.value = -6;
+                relay.output.knee.value = 6;
+                relay.output.ratio.value = 8;
+                relay.output.attack.value = 0.003;
+                relay.output.release.value = 0.15;
+                relay.output.connect(context.destination);
+            }
+            source.connect(relay.output);
+            source.onended = () => source.disconnect();
             const now = context.currentTime;
             let nextPlaybackAt = relay.playbackAt.get(peerId) || 0;
             if (nextPlaybackAt < now) nextPlaybackAt = now + RELAY_JITTER_SECONDS;
@@ -2112,6 +2194,7 @@
             }
             source.start(nextPlaybackAt);
             relay.playbackAt.set(peerId, nextPlaybackAt + audio.duration);
+            if (Math.sqrt(energy / pcm.length) >= 0.006) noteSpeech(peerId, (nextPlaybackAt - now + audio.duration) * 1000);
         }
 
         function leaveVoice() {
@@ -2121,7 +2204,6 @@
             state.voice.enabled = false;
             socket.emit('voice-leave');
             updateVoiceButton();
-            showNotice('Voice chat is off.');
         }
 
         let searchTimer;
