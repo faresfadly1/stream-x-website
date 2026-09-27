@@ -1474,7 +1474,7 @@
             youtubeObservedTime: 0, youtubeObservedAt: 0, audioUnlocked: false, autoplayMuted: false,
             chatMessageIds: new Set(), sync: new RoomPlaybackSync(), mediaGeneration: 0,
             syncRequestAt: null, transitMs: 0, localActionAt: -Infinity,
-            remoteSeek: null, remoteVolume: null, observedPlaying: false, pauseAfterInitialSeek: false,
+            remoteSeek: null, remoteVolume: null, observedPlaying: false, cuedTime: null,
             voice: {
                 enabled: false,
                 stream: null,
@@ -1599,7 +1599,7 @@
             state.youtubeObservedAt = 0;
             state.remoteSeek = null;
             state.remoteVolume = null;
-            state.pauseAfterInitialSeek = false;
+            state.cuedTime = null;
             state.sync.reset();
             state.player = null;
             state.ready = false;
@@ -1746,12 +1746,6 @@
 
         function onYouTubeState(code) {
             if (state.unloading || !state.ready) return;
-            if (state.pauseAfterInitialSeek && code === YT.PlayerState.PLAYING && !state.sync.target()?.playing) {
-                state.pauseAfterInitialSeek = false;
-                state.player.pauseVideo();
-                return;
-            }
-            if (code === YT.PlayerState.PAUSED) state.pauseAfterInitialSeek = false;
             if (code === YT.PlayerState.PLAYING) emitPlayback('play');
             if (code === YT.PlayerState.PAUSED || code === YT.PlayerState.ENDED) emitPlayback('pause');
         }
@@ -1874,13 +1868,6 @@
                     .catch(() => showNotice('Press play once to enable this Vimeo video in your browser.'));
                 return;
             }
-            const current = playerTime();
-            const needsSeek = Math.abs(current - time) > seekThreshold;
-            if (needsSeek) {
-                state.remoteSeek = {time, until: performance.now() + 1500};
-                if (state.media.type === 'youtube' && !target.playing && [-1, 0, 5].includes(state.player.getPlayerState())) state.pauseAfterInitialSeek = true;
-                state.player.seekTo ? state.player.seekTo(time, true) : (state.player.currentTime = time);
-            }
             const volume = playerVolume();
             if (Math.abs(volume - target.volume) >= 1) {
                 state.remoteVolume = {previous: volume, target: target.volume, until: performance.now() + 1500};
@@ -1891,6 +1878,26 @@
                     state.player.volume = target.volume / 100;
                     if (target.volume > 0) state.player.muted = false;
                 }
+            }
+            const current = playerTime();
+            const youtubeState = state.media.type === 'youtube' ? state.player.getPlayerState() : null;
+            if (state.media.type === 'youtube' && !target.playing) {
+                if (type === 'snapshot' && !previouslyPlaying && youtubeState === YT.PlayerState.BUFFERING) return;
+                if ([-1, 0, 5].includes(youtubeState) && time > 0) {
+                    // Queue a paused join/refresh at the shared position. A
+                    // seek followed immediately by pause can interrupt the
+                    // very first video load and leave YouTube on a black frame.
+                    if (state.cuedTime === null || Math.abs(state.cuedTime - time) > 0.1) {
+                        state.cuedTime = time;
+                        state.player.cueVideoById({videoId: state.media.videoId, startSeconds: time});
+                    }
+                    return;
+                }
+            }
+            const needsSeek = Math.abs(current - time) > seekThreshold;
+            if (needsSeek) {
+                state.remoteSeek = {time, until: performance.now() + 1500};
+                state.player.seekTo ? state.player.seekTo(time, true) : (state.player.currentTime = time);
             }
             if (state.media.type === 'youtube') {
                 if (target.playing && !isPlaying()) {

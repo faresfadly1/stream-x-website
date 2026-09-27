@@ -45,6 +45,7 @@ function room() {
         getCurrentTime(){return this.time;},getVolume(){return this.volume;},isMuted(){return this.muted;},
         getPlayerState(){return this.code;},
         seekTo(time){this.time=time;this.commands.push(['seek',time]);},
+        cueVideoById({startSeconds}){this.time=startSeconds;this.code=5;this.commands.push(['cue',startSeconds]);},
         setVolume(volume){this.volume=volume;this.commands.push(['volume',volume]);},
         mute(){this.muted=true;},unMute(){this.muted=false;},destroy(){},
         playVideo(){this.code=1;this.commands.push(['play']);this.events.onStateChange({data:1});},
@@ -84,7 +85,7 @@ test('latest pause/seek received while iframe loads wins on ready', () => {
     r.callbacks['playback-action']({type:'pause',playback:r.snapshot({currentTime:80})});
     r.ready();
     assert.equal(r.player.time,80);
-    assert.equal(r.player.code,2);
+    assert.equal(r.player.code,5);
     assert.equal(r.actions().length,0);
 });
 
@@ -112,7 +113,7 @@ test('in-sync snapshots do not issue seek/play/pause commands', () => {
 test('refresh follows the shared pause without broadcasting a resume', () => {
     const r=room();r.state(r.snapshot({currentTime:67,playing:false}));r.ready();
     assert.equal(r.player.time,67);
-    assert.equal(r.player.code,2);
+    assert.equal(r.player.code,5);
     assert.equal(r.actions().length,0);
     r.windowEvents.beforeunload();r.player.playVideo();
     assert.equal(r.actions().length,0);
