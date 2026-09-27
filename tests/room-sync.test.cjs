@@ -150,3 +150,19 @@ test('a user can immediately restore the volume that preceded a remote change', 
     assert.equal(r.actions().length,1);
     assert.equal(r.actions()[0][1].volume,100);
 });
+
+test('periodic paused snapshots allow local play to finish buffering', () => {
+    const r=room();r.state(r.snapshot());r.ready();r.player.commands=[];
+    r.player.code=3;r.tick(2000);r.state(r.snapshot());
+    assert.equal(r.player.commands.length,0);
+    r.player.playVideo();
+    assert.equal(r.actions().length,1);
+    assert.equal(r.actions()[0][1].type,'play');
+});
+
+test('an explicit remote pause still interrupts buffering immediately', () => {
+    const r=room();r.state(r.snapshot({playing:true}));r.ready();r.player.code=3;
+    r.tick(100);r.callbacks['playback-action']({type:'pause',playback:r.snapshot()});
+    assert.equal(r.player.code,2);
+    assert.equal(r.actions().length,0);
+});

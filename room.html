@@ -1843,6 +1843,7 @@
         }
 
         function applyPlayback(playback, type = 'snapshot') {
+            const previouslyPlaying = state.sync.target()?.playing;
             // Keep updates received during iframe loading; onReady applies the
             // newest state, not the older state captured at player creation.
             if (playback && !state.sync.receive(playback, state.transitMs)) return;
@@ -1895,7 +1896,12 @@
                 if (target.playing && !isPlaying()) {
                     startMutedForAutoplay();
                     state.player.playVideo();
-                } else if (!target.playing && (isPlaying() || needsSeek)) state.player.pauseVideo();
+                } else if (!target.playing && (type === 'pause' || previouslyPlaying || state.player.getPlayerState() === YT.PlayerState.PLAYING || needsSeek)) {
+                    // BUFFERING after a local Play click has not emitted the
+                    // PLAYING event yet. An unchanged paused snapshot must not
+                    // cancel that click while YouTube is loading its first frame.
+                    state.player.pauseVideo();
+                }
             } else {
                 if (target.playing && state.player.paused) state.player.play().catch(() => showNotice('Press play once to enable audio in this browser.'));
                 else if (!target.playing && !state.player.paused) state.player.pause();
