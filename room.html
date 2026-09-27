@@ -1750,6 +1750,14 @@
 
         function onYouTubeState(code) {
             if (state.unloading || !state.ready) return;
+            if (state.cuedTime !== null && [YT.PlayerState.PLAYING, YT.PlayerState.PAUSED].includes(code)) {
+                // YouTube briefly reports time zero while a cued video starts.
+                // That is player initialization, not the viewer rewinding it.
+                const cued = state.cuedTime;
+                state.cuedTime = null;
+                state.youtubeObservedAt = 0;
+                if (code === YT.PlayerState.PAUSED && playerTime() > 0 && Math.abs(playerTime() - cued) > 0.65) emitPlayback('seek');
+            }
             if (code === YT.PlayerState.PLAYING) emitPlayback('play');
             if (code === YT.PlayerState.PAUSED || code === YT.PlayerState.ENDED) emitPlayback('pause');
         }
@@ -1876,7 +1884,7 @@
             // A stalled player is not a backwards seek. Only a real time jump
             // (backwards from the previous sample, or forward past elapsed time)
             // can become a room-wide seek.
-            if (state.youtubeObservedAt && elapsed < 1.5 &&
+            if (state.cuedTime === null && state.youtubeObservedAt && elapsed < 1.5 &&
                 (current < state.youtubeObservedTime - 0.65 || current > expected + 0.65)) emitPlayback('seek');
             emitPlayback('volume');
             state.youtubeObservedTime = current;

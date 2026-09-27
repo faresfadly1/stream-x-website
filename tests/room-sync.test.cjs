@@ -241,6 +241,15 @@ test('volume commands never seek or restart a buffering player', () => {
     assert.deepEqual(r.player.commands,[['volume',50]]);
 });
 
+test('the temporary zero time while a cued video starts is not a room rewind', () => {
+    const r=room();r.state(r.snapshot({currentTime:45}));r.ready();
+    r.run('monitorYouTubePlayback()');r.tick(200);r.player.time=0;r.player.code=3;
+    r.run('monitorYouTubePlayback()');assert.equal(r.actions().length,0);
+    r.tick(200);r.player.time=45;r.player.playVideo();r.run('monitorYouTubePlayback()');
+    assert.equal(r.actions().length,1);assert.equal(r.actions()[0][1].type,'play');
+    assert.equal(r.actions()[0][1].currentTime,45);
+});
+
 test('a microphone-off listener plays incoming speech and ducks the film without sending actions', () => {
     const r=room();r.state(r.snapshot());r.ready();
     r.run(`
