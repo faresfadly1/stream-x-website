@@ -734,7 +734,37 @@
             }
 
             .arrow-btn {
+                display: flex;
+                position: absolute;
+                top: calc(min(54dvh, 520px) - 16px);
+                right: auto;
+                left: 50%;
+                width: 64px;
+                height: 32px;
+                transform: translateX(-50%);
+                border-radius: 12px;
+                font-size: 15px;
+                z-index: 200;
+            }
+
+            .container.sidebar-collapsed .sidebar,
+            .container.sidebar-collapsed .sidebar.hidden {
                 display: none;
+            }
+
+            .container.sidebar-collapsed .video-section {
+                flex: 1 1 auto;
+            }
+
+            .arrow-btn.moved {
+                top: auto;
+                right: 12px;
+                bottom: 12px;
+                left: auto;
+                width: 44px;
+                height: 44px;
+                transform: none;
+                border-radius: 50%;
             }
 
             .source-buttons {
@@ -789,7 +819,11 @@
             }
 
             .video-section {
-                flex-basis: min(46dvh, 380px);
+                flex-basis: clamp(230px, 44dvh, 380px);
+            }
+
+            .arrow-btn {
+                top: calc(clamp(230px, 44dvh, 380px) - 16px);
             }
 
             .empty-state {
@@ -848,8 +882,38 @@
                 height: 34px;
             }
 
+        }
+
+        /* A locked portrait phone can have little vertical space. Prioritise
+           the video and the message field, while keeping the panel closable. */
+        @media (max-width: 600px) and (orientation: portrait) and (max-height: 700px) {
+            .video-section {
+                flex-basis: clamp(210px, 42dvh, 294px);
+            }
+
             .arrow-btn {
-                display: none;
+                top: calc(clamp(210px, 42dvh, 294px) - 16px);
+            }
+
+            .sidebar-header {
+                padding: 8px 12px;
+            }
+
+            .tab {
+                padding-block: 7px;
+            }
+
+            .tab-content {
+                padding-block: 8px;
+            }
+
+            .chat-section {
+                min-height: 136px;
+            }
+
+            .chat-input-container {
+                padding-top: 7px;
+                padding-bottom: calc(7px + env(safe-area-inset-bottom));
             }
         }
     </style>
@@ -907,7 +971,7 @@
         </div>
 
         <!-- Sidebar -->
-        <div class="sidebar">
+        <div class="sidebar" id="roomSidebar">
             <!-- Sidebar Header -->
             <div class="sidebar-header">
                 <div class="room-info">
@@ -1008,7 +1072,7 @@
         </div>
 
         <!-- Arrow Button -->
-        <button class="arrow-btn">
+        <button class="arrow-btn" type="button" aria-controls="roomSidebar" aria-expanded="true" aria-label="Collapse room panel" title="Collapse room panel">
             <i class="fas fa-chevron-right"></i>
         </button>
     </div>
@@ -2099,14 +2163,31 @@
             location.href = `${location.pathname}?room=${createRoomId()}`;
         });
 
-        document.querySelector('.arrow-btn').addEventListener('click', function () {
-            const sidebar = document.querySelector('.sidebar');
-            const isHidden = sidebar.classList.toggle('hidden');
-            document.querySelector('.container').classList.toggle('sidebar-collapsed', isHidden);
-            this.classList.toggle('moved', isHidden);
-            this.querySelector('i').classList.toggle('fa-chevron-right');
-            this.querySelector('i').classList.toggle('fa-chevron-left');
+        const roomToggle = document.querySelector('.arrow-btn');
+        const roomSidebar = document.querySelector('.sidebar');
+        const roomContainer = document.querySelector('.container');
+        const compactRoomLayout = window.matchMedia('(max-width: 850px)');
+
+        function updateRoomToggle() {
+            const isHidden = roomSidebar.classList.contains('hidden');
+            const compact = compactRoomLayout.matches;
+            const icon = roomToggle.querySelector('i');
+            roomToggle.classList.toggle('moved', isHidden);
+            roomToggle.setAttribute('aria-expanded', String(!isHidden));
+            roomToggle.setAttribute('aria-label', isHidden ? 'Open room panel' : 'Collapse room panel');
+            roomToggle.title = isHidden ? 'Open room panel' : 'Collapse room panel';
+            icon.className = `fas ${compact
+                ? (isHidden ? 'fa-chevron-up' : 'fa-chevron-down')
+                : (isHidden ? 'fa-chevron-left' : 'fa-chevron-right')}`;
+        }
+
+        roomToggle.addEventListener('click', () => {
+            const isHidden = roomSidebar.classList.toggle('hidden');
+            roomContainer.classList.toggle('sidebar-collapsed', isHidden);
+            updateRoomToggle();
         });
+        compactRoomLayout.addEventListener('change', updateRoomToggle);
+        updateRoomToggle();
 
         window.switchTab = (name) => {
             ['people', 'playlist', 'settings'].forEach((tab, index) => {
