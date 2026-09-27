@@ -168,6 +168,8 @@
 
         .url-input {
             flex: 1;
+            width: 100%;
+            min-width: 0;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
@@ -188,6 +190,7 @@
 
         .url-input-wrapper {
             flex: 1;
+            min-width: 0;
             position: relative;
         }
 
@@ -331,6 +334,25 @@
             justify-content: center;
             background: var(--black);
             position: relative;
+        }
+
+        /* Embedded players must use the available room space instead of the
+           YouTube API's default 640 × 360 frame, which overlaps mobile chat. */
+        #videoFrame {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+        }
+
+        #videoFrame > iframe,
+        #videoFrame > video,
+        #youtubePlayer {
+            display: block;
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            border: 0;
+            object-fit: contain;
         }
 
         .empty-state {
@@ -592,11 +614,14 @@
 
         .chat-messages {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
+            overflow-wrap: anywhere;
             padding: 20px;
         }
 
         .chat-input-container {
+            flex-shrink: 0;
             padding: 15px 20px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             display: grid;
@@ -615,6 +640,7 @@
 
         .chat-input {
             width: 100%;
+            min-width: 0;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
@@ -685,7 +711,7 @@
             align-items: center;
             justify-content: center;
             font-size: 18px;
-            transition: all 0.3s ease;
+            transition: background-color 0.2s ease;
             z-index: 101;
         }
 
@@ -695,7 +721,6 @@
 
         .arrow-btn:hover {
             background: var(--primary-light);
-            width: 40px;
         }
 
         @media (max-width: 850px) {
@@ -772,7 +797,7 @@
             }
         }
 
-        @media (max-width: 600px) {
+        @media (max-width: 600px), (max-width: 950px) and (orientation: landscape) and (max-height: 500px) {
             .header {
                 min-height: 54px;
                 padding: 9px 12px;
@@ -914,6 +939,67 @@
             .chat-input-container {
                 padding-top: 7px;
                 padding-bottom: calc(7px + env(safe-area-inset-bottom));
+            }
+        }
+
+        /* Short, wide phone screens cannot fit the player above the chat. */
+        @media (max-width: 950px) and (orientation: landscape) and (max-height: 500px) {
+            .container {
+                --room-panel-width: clamp(240px, 38vw, 300px);
+            }
+
+            .container,
+            .container.sidebar-collapsed {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) var(--room-panel-width);
+            }
+
+            .container.sidebar-collapsed {
+                grid-template-columns: minmax(0, 1fr) 0;
+            }
+
+            .sidebar {
+                width: auto;
+                border-top: 0;
+                border-left: 1px solid rgba(255, 255, 255, 0.1);
+            }
+
+            .sidebar-header {
+                padding: 8px 10px;
+            }
+
+            .tab {
+                padding: 7px 6px;
+            }
+
+            .tab-content {
+                flex: 0 1 22%;
+                padding: 8px 10px;
+            }
+
+            .chat-section {
+                flex: 1 1 0;
+                min-height: 0;
+            }
+
+            .chat-messages {
+                padding: 8px 10px;
+            }
+
+            .arrow-btn,
+            .arrow-btn.moved {
+                top: 50%;
+                right: var(--room-panel-width);
+                bottom: auto;
+                left: auto;
+                width: 32px;
+                height: 64px;
+                transform: translateY(-50%);
+                border-radius: 8px 0 0 8px;
+            }
+
+            .arrow-btn.moved {
+                right: 0;
             }
         }
     </style>
@@ -1592,6 +1678,8 @@
                 videoFrame.innerHTML = '<div id="youtubePlayer"></div>';
                 const createYouTubePlayer = () => {
                     state.player = new YT.Player('youtubePlayer', {
+                        width: '100%',
+                        height: '100%',
                         videoId: media.videoId,
                         // A viewer who joins while the host is already playing
                         // must request autoplay at iframe creation time. Calling
@@ -2167,10 +2255,11 @@
         const roomSidebar = document.querySelector('.sidebar');
         const roomContainer = document.querySelector('.container');
         const compactRoomLayout = window.matchMedia('(max-width: 850px)');
+        const landscapeRoomLayout = window.matchMedia('(max-width: 950px) and (orientation: landscape) and (max-height: 500px)');
 
         function updateRoomToggle() {
             const isHidden = roomSidebar.classList.contains('hidden');
-            const compact = compactRoomLayout.matches;
+            const compact = compactRoomLayout.matches && !landscapeRoomLayout.matches;
             const icon = roomToggle.querySelector('i');
             roomToggle.classList.toggle('moved', isHidden);
             roomToggle.setAttribute('aria-expanded', String(!isHidden));
@@ -2187,6 +2276,7 @@
             updateRoomToggle();
         });
         compactRoomLayout.addEventListener('change', updateRoomToggle);
+        landscapeRoomLayout.addEventListener('change', updateRoomToggle);
         updateRoomToggle();
 
         window.switchTab = (name) => {
