@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stream X audio engine self-test</title>
+<h1>Audio engine self-test</h1>
+<p>Uses a synthetic signal. Does not access the microphone or play any sound.</p>
+<button id="run">Run audio test</button>
+<pre id="result" role="status">Ready</pre>
+<script>
+document.getElementById('run').onclick = async () => {
+    const button = document.getElementById('run');
+    const result = document.getElementById('result');
+    button.disabled = true;
+    let context;
+    try {
+        result.textContent = 'Testing the real browser AudioWorklet…';
+        context = new AudioContext();
+        await context.resume();
+        await context.audioWorklet.addModule('../room-voice-processor.js?v=1');
+        const processor = new AudioWorkletNode(context, 'room-voice', {channelCount: 1});
+        const source = context.createOscillator();
+        source.frequency.value = 440;
+        const input = context.createGain();
+        const silentOutput = context.createGain();
+        silentOutput.gain.value = 0;
+        source.connect(input).connect(processor).connect(silentOutput).connect(context.destination);
+        const start = context.currentTime;
+        input.gain.setValueAtTime(0.1, start);
+        input.gain.setValueAtTime(0, start + 1);
+        const packets = [];
+        processor.port.onmessage = ({data}) => packets.push({
+            time: context.currentTime - start,
+            speaking: data.speaking,
+            length: data.data.byteLength,
+            peak: Math.max(...new Int16Array(data.data).map(Math.abs))
+        });
+        source.start();
+        await new Promise(resolve => setTimeout(resolve, 2200));
+        source.stop();
+        const speech = packets.filter(packet => packet.speaking);
+        const pass = speech.length >= 15 && packets.every(packet => packet.length === 2048)
+            && speech.some(packet => packet.peak > 1000)
+            && !packets.some(packet => packet.time > 1.6);
+        result.textContent = JSON.stringify({
+            result: pass ? 'PASS' : 'FAIL', inputSampleRate: context.sampleRate,
+            speechPackets: speech.length, totalPackets: packets.length,
+            silenceStopsTransmission: !packets.some(packet => packet.time > 1.6),
+            microphoneUsed: false, audibleOutput: false
+        }, null, 2);
+        processor.disconnect();
+        processor.port.close();
+    } catch(error) {
+        result.textContent = 'FAIL: ' + error.message;
+    } finally {
+        if(context) await context.close();
+        button.disabled = false;
+    }
+};
+</script>
