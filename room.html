@@ -1494,8 +1494,10 @@
                 videoReady = true;
             }
             if (voiceReady || videoReady) soundBtn.hidden = true;
-            if (voiceReady) showNotice('Room voice audio enabled.');
-            else if (videoReady) showNotice('Room sound enabled.');
+            // Voice output is enabled automatically after a user gesture.
+            // Keep this silent: normal taps, chat messages, and player
+            // controls should not be interrupted by a voice-status toast.
+            if (!voiceReady && videoReady) showNotice('Room sound enabled.');
         }
 
         // Browsers only allow audio output after a user gesture. Opening the
