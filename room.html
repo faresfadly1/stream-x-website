@@ -35,7 +35,12 @@
             background: var(--darker);
             color: var(--white);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
             height: 100vh;
+            height: 100dvh;
+            min-height: 100vh;
+            min-height: 100dvh;
         }
 
         /* Header */
@@ -43,6 +48,7 @@
             background: var(--dark);
             padding: 12px 20px;
             display: flex;
+            flex: 0 0 auto;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -131,15 +137,18 @@
 
         /* Main Container */
         .container {
-            display: flex;
-            height: calc(100vh - 57px);
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(300px, 350px);
+            flex: 1 1 auto;
+            min-height: 0;
             position: relative;
             overflow: hidden;
         }
 
         /* Video Section */
         .video-section {
-            width: 100%;
+            min-width: 0;
+            min-height: 0;
             display: flex;
             flex-direction: column;
             background: var(--black);
@@ -154,6 +163,7 @@
             gap: 15px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             position: relative;
+            min-width: 0;
         }
 
         .url-input {
@@ -315,6 +325,7 @@
         /* Video Player */
         .video-player {
             flex: 1;
+            min-height: 0;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -369,21 +380,21 @@
 
         /* Sidebar */
         .sidebar {
-            width: 350px;
+            min-width: 0;
             background: var(--dark);
             display: flex;
             flex-direction: column;
             border-left: 1px solid rgba(255, 255, 255, 0.1);
-            transition: transform 0.3s ease;
-            position: absolute;
-            right: 0;
-            top: 0;
-            height: 100%;
-            z-index: 100;
+            min-height: 0;
+            transition: opacity 0.2s ease;
         }
 
         .sidebar.hidden {
-            transform: translateX(350px);
+            display: none;
+        }
+
+        .container.sidebar-collapsed {
+            grid-template-columns: minmax(0, 1fr) 0;
         }
 
         .sidebar-header {
@@ -446,6 +457,7 @@
 
         .tab-content {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 20px;
         }
@@ -571,7 +583,8 @@
 
         /* Chat Section */
         .chat-section {
-            flex: 1;
+            flex: 0 1 48%;
+            min-height: 145px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -586,6 +599,18 @@
         .chat-input-container {
             padding: 15px 20px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .chat-label {
+            grid-column: 1 / -1;
+            color: var(--lighter-gray);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .03em;
         }
 
         .chat-input {
@@ -595,7 +620,7 @@
             border-radius: 8px;
             padding: 12px 15px;
             color: var(--white);
-            font-size: 14px;
+            font-size: 16px;
             resize: none;
         }
 
@@ -607,6 +632,22 @@
 
         .chat-input::placeholder {
             color: var(--light-gray);
+        }
+
+        .chat-send-btn {
+            min-width: 44px;
+            height: 44px;
+            border: 0;
+            border-radius: 8px;
+            background: var(--primary);
+            color: var(--black);
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .chat-send-btn:hover,
+        .chat-send-btn:focus-visible {
+            background: var(--primary-light);
         }
 
         /* Scrollbar */
@@ -627,31 +668,10 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                position: absolute;
-                right: -100%;
-                top: 57px;
-                height: calc(100vh - 57px);
-                transition: right 0.3s ease;
-                z-index: 100;
-            }
-
-            .sidebar.active {
-                right: 0;
-            }
-
-            .source-buttons {
-                flex-direction: column;
-            }
-        }
-
         /* Arrow Button */
         .arrow-btn {
             position: fixed;
-            right: 365px;
+            right: 350px;
             top: 50%;
             transform: translateY(-50%);
             width: 36px;
@@ -670,7 +690,7 @@
         }
 
         .arrow-btn.moved {
-            right: 15px;
+            right: 0;
         }
 
         .arrow-btn:hover {
@@ -678,9 +698,158 @@
             width: 40px;
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 850px) {
+            body {
+                overflow: hidden;
+            }
+
+            .header {
+                position: relative;
+            }
+
+            .container,
+            .container.sidebar-collapsed {
+                display: flex;
+                flex-direction: column;
+                height: auto;
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .video-section {
+                flex: 0 0 min(54dvh, 520px);
+                min-height: 0;
+            }
+
+            .sidebar,
+            .sidebar.hidden {
+                display: flex;
+                width: 100%;
+                flex: 1 1 auto;
+                height: auto;
+                min-height: 0;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+                border-left: 0;
+            }
+
             .arrow-btn {
-                right: -36px;
+                display: none;
+            }
+
+            .source-buttons {
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .header {
+                min-height: 54px;
+                padding: 9px 12px;
+            }
+
+            .logo h1 {
+                font-size: 16px;
+            }
+
+            .header-actions {
+                gap: 6px;
+            }
+
+            .connection-status {
+                display: none;
+            }
+
+            .header-actions .btn {
+                width: 38px;
+                height: 38px;
+                padding: 0;
+                justify-content: center;
+                font-size: 0;
+            }
+
+            .header-actions .btn i {
+                font-size: 15px;
+            }
+
+            .control-bar {
+                padding: 10px 12px;
+                gap: 8px;
+            }
+
+            .url-input {
+                min-width: 0;
+                padding: 11px 12px;
+                font-size: 16px;
+            }
+
+            .close-btn {
+                flex: 0 0 40px;
+                min-height: 40px;
+            }
+
+            .video-section {
+                flex-basis: min(46dvh, 380px);
+            }
+
+            .empty-state {
+                padding: 20px 14px;
+            }
+
+            .empty-state-box {
+                padding: 22px 18px;
+            }
+
+            .empty-state h2 {
+                font-size: 1.2rem;
+            }
+
+            .sidebar,
+            .sidebar.hidden {
+                min-height: 0;
+            }
+
+            .sidebar-header {
+                padding: 12px;
+            }
+
+            .tab {
+                padding: 10px 6px;
+            }
+
+            .tab-content {
+                padding: 12px;
+            }
+
+            .chat-section {
+                min-height: 150px;
+            }
+
+            .chat-messages {
+                padding: 12px;
+            }
+
+            .chat-input-container {
+                padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+            }
+
+            .chat-input {
+                min-height: 44px;
+            }
+        }
+
+        @media (max-width: 380px) {
+            .logo h1 {
+                font-size: 14px;
+            }
+
+            .header-actions .btn {
+                width: 34px;
+                height: 34px;
+            }
+
+            .arrow-btn {
+                display: none;
             }
         }
     </style>
@@ -825,12 +994,16 @@
 
             <!-- Chat Section -->
             <div class="chat-section">
-                <div class="chat-messages">
+                <div class="chat-messages" id="chatMessages" aria-live="polite">
                     <!-- Chat messages will appear here -->
                 </div>
-                <div class="chat-input-container">
-                    <input type="text" class="chat-input" placeholder="Enter a message...">
-                </div>
+                <form class="chat-input-container" id="chatForm">
+                    <label class="chat-label" for="chatInput"><i class="fas fa-comments"></i> Room chat</label>
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Enter a message…" autocomplete="off" enterkeyhint="send" maxlength="1000" aria-label="Enter a message for everyone in this room">
+                    <button class="chat-send-btn" type="submit" aria-label="Send message" title="Send message">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
             </div>
         </div>
 
@@ -1905,11 +2078,13 @@
         }, { capture: true });
         document.addEventListener('keydown', enableRoomSound, { once: true });
         voiceBtn.addEventListener('click', toggleVoice);
-        document.querySelector('.chat-input').addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && event.currentTarget.value.trim()) {
-                socket.emit('chat-message', event.currentTarget.value);
-                event.currentTarget.value = '';
-            }
+        document.getElementById('chatForm').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+            socket.emit('chat-message', message);
+            input.value = '';
         });
         document.getElementById('shareBtn').addEventListener('click', async () => {
             const link = location.href;
@@ -1923,8 +2098,10 @@
         });
 
         document.querySelector('.arrow-btn').addEventListener('click', function () {
-            document.querySelector('.sidebar').classList.toggle('hidden');
-            this.classList.toggle('moved');
+            const sidebar = document.querySelector('.sidebar');
+            const isHidden = sidebar.classList.toggle('hidden');
+            document.querySelector('.container').classList.toggle('sidebar-collapsed', isHidden);
+            this.classList.toggle('moved', isHidden);
             this.querySelector('i').classList.toggle('fa-chevron-right');
             this.querySelector('i').classList.toggle('fa-chevron-left');
         });
