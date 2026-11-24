@@ -1574,10 +1574,16 @@
             if (vimeoId) return { type: 'vimeo', videoId: vimeoId };
             try {
                 const url = new URL(value.trim());
-                if (/\.(mp4|webm|ogg|m3u8)(?:$|[?#])/i.test(url.pathname + url.search)) return { type: 'video', url: url.href };
-                if (url.protocol === 'http:' || url.protocol === 'https:') return { type: 'embed', url: url.href };
+                if (url.protocol === 'http:' || url.protocol === 'https:') return { type: 'video', url: url.href };
             } catch (_) { /* handled below */ }
             return null;
+        }
+
+        function isDirectVideoUrl(value) {
+            try {
+                const url = new URL(value);
+                return /\.(mp4|webm|ogg|m3u8)$/i.test(url.pathname);
+            } catch (_) { return false; }
         }
 
         function visibleMediaUrl(media) {
@@ -1730,7 +1736,7 @@
                         if (window.Vimeo?.Player) { clearInterval(waitForApi); createVimeoPlayer(); }
                     }, 100);
                 }
-            } else if (media.type === 'embed') {
+            } else if (media.type === 'embed' || (media.type === 'video' && !isDirectVideoUrl(media.url))) {
                 const frame = document.createElement('iframe');
                 frame.title = 'Shared movie link';
                 frame.src = media.url;
@@ -2228,7 +2234,7 @@
             if (!media) return showNotice('Paste a valid http or https link to play it in the room.', true);
             socket.emit('media-change', media);
             if (title) showNotice(`Playing ${title} for everyone in the room.`);
-            else if (media.type === 'embed') showNotice('Link shared with the room. The site must allow embedding, and its playback controls may not sync.');
+            else if (media.type === 'embed' || (media.type === 'video' && !isDirectVideoUrl(media.url))) showNotice('Link shared with the room. The site must allow embedding, and its playback controls may not sync.');
         }
 
         const playLinkBtn = document.getElementById('playLinkBtn');
