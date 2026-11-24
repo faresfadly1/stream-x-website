@@ -9,7 +9,7 @@
     <script src="https://player.vimeo.com/api/player.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="room-sync.js?v=1"></script>
-    <script src="room-audio.js?v=1"></script>
+    <script src="room-audio.js?v=2"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -2086,11 +2086,10 @@
             }
         }
 
-        // 24 kHz mono is clear for speech while keeping the data rate modest.
-        // A 2048-sample input block at 48 kHz is ~43 ms, which keeps voice
-        // responsive while a separate video player is running.
-        const RELAY_SAMPLE_RATE = 24000;
-        const RELAY_PROCESSOR_SAMPLES = 2048;
+        // Companded 16 kHz speech uses 320-byte packets every 20 ms instead
+        // of 2 KB raw PCM packets, reducing uplink load and audible dropouts.
+        const RELAY_SAMPLE_RATE = 16000;
+        const RELAY_PROCESSOR_SAMPLES = 1024;
         const RELAY_JITTER_SECONDS = 0.075;
         const RELAY_MAX_BUFFER_SECONDS = 0.25;
 
@@ -2118,14 +2117,15 @@
             const send = ({ data, speaking }) => {
                 if (generation !== relay.generation || !state.voice.enabled || !socket.connected) return;
                 if (speaking) noteSpeech('local');
-                // Never queue microphone audio while reconnecting or under
-                // transport backpressure: stale speech is worse than a gap.
-                socket.volatile.compress(false).emit('voice-audio', data);
+                // These small speech frames use reliable delivery; volatile
+                // emits deliberately drop packets during brief backpressure,
+                // which is heard as clipped words.
+                socket.compress(false).emit('voice-audio', data);
             };
             if (context.audioWorklet && window.AudioWorkletNode) {
                 try {
                     if (!relay.workletLoaded) {
-                        await context.audioWorklet.addModule('room-voice-processor.js?v=1');
+                        await context.audioWorklet.addModule('room-voice-processor.js?v=2');
                         relay.workletLoaded = true;
                     }
                     if (generation !== relay.generation) return;
@@ -2175,19 +2175,19 @@
 
         function playRelayedVoice(peerId, data) {
             const bytes = relayBytes(data);
-            if (!bytes || bytes.byteLength < 2 || bytes.byteLength % 2) return;
+            if (!bytes || bytes.byteLength < 1) return;
             const context = voiceRelayContext();
             if (context.state !== 'running') {
                 soundBtn.hidden = false;
                 soundBtn.innerHTML = '<i class="fas fa-volume-up"></i> Enable voice audio';
                 return;
             }
-            const pcm = new Int16Array(bytes);
-            const audio = context.createBuffer(1, pcm.length, RELAY_SAMPLE_RATE);
+            const encoded = new Uint8Array(bytes);
+            const audio = context.createBuffer(1, encoded.length, RELAY_SAMPLE_RATE);
             const samples = audio.getChannelData(0);
             let energy = 0;
-            for (let index = 0; index < pcm.length; index += 1) {
-                samples[index] = pcm[index] / 0x8000;
+            for (let index = 0; index < encoded.length; index += 1) {
+                samples[index] = decodeRoomVoiceSample(encoded[index]);
                 energy += samples[index] * samples[index];
             }
             // Also filter silence from peers that still have an older page open.

@@ -2,7 +2,7 @@
 // passes through this processor: it only processes the microphone.
 (function (root) {
     class RoomVoiceEncoder {
-        constructor(inputRate, outputRate = 24000, blockSize = 1024) {
+        constructor(inputRate, outputRate = 16000, blockSize = 320) {
             this.ratio = inputRate / outputRate;
             this.outputRate = outputRate;
             this.blockSize = blockSize;
@@ -25,12 +25,14 @@
             }
             const target = this.hold > 0 ? 1 : 0;
             if (!target && this.gain === 0) return null;
-            const pcm = new Int16Array(block.length);
+            // G.711 μ-law keeps speech intelligible while cutting relay
+            // bandwidth from 256–384 kbps raw PCM to 128 kbps at 16 kHz.
+            const pcm = new Uint8Array(block.length);
             for (let i = 0; i < block.length; i++) {
                 // Soft attack/release avoids clicks when the noise gate opens.
                 const step = 1 / (this.outputRate * (target ? 0.005 : 0.06));
                 this.gain = target ? Math.min(1, this.gain + step) : Math.max(0, this.gain - step);
-                pcm[i] = Math.round(Math.max(-1, Math.min(1, block[i] * this.gain)) * 32767);
+                pcm[i] = encodeMuLaw(block[i] * this.gain);
             }
             return { pcm, speaking };
         }
@@ -61,6 +63,28 @@
             return packets;
         }
     }
+
+    function encodeMuLaw(value) {
+        const bias = 0x84;
+        const clip = 32635;
+        let sample = Math.round(Math.max(-1, Math.min(1, value)) * 32768);
+        const sign = sample < 0 ? 0x80 : 0;
+        if (sample < 0) sample = -sample;
+        sample = Math.min(sample, clip) + bias;
+        let exponent = 7;
+        for (let mask = 0x4000; exponent > 0 && (sample & mask) === 0; mask >>= 1) exponent -= 1;
+        const mantissa = (sample >> (exponent + 3)) & 0x0f;
+        return (~(sign | (exponent << 4) | mantissa)) & 0xff;
+    }
+
+    function decodeMuLaw(value) {
+        const sample = (~value) & 0xff;
+        let magnitude = ((sample & 0x0f) << 3) + 0x84;
+        magnitude <<= (sample & 0x70) >> 4;
+        return ((sample & 0x80) ? (0x84 - magnitude) : (magnitude - 0x84)) / 32768;
+    }
+
     root.RoomVoiceEncoder = RoomVoiceEncoder;
+    root.decodeRoomVoiceSample = decodeMuLaw;
     if (typeof module !== 'undefined' && module.exports) module.exports = RoomVoiceEncoder;
 })(typeof window !== 'undefined' ? window : globalThis);

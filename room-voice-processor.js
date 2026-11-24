@@ -1,4 +1,4 @@
-import './room-audio.js?v=1';
+import './room-audio.js?v=2';
 
 class RoomVoiceProcessor extends AudioWorkletProcessor {
     constructor() {

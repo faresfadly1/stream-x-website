@@ -810,11 +810,11 @@ io.on('connection', (socket) => {
                 : payload instanceof ArrayBuffer
                     ? Buffer.from(payload)
                     : null;
-        // At 24 kHz mono PCM, a normal browser block is only a few kilobytes.
-        // Keep a firm bound so a client cannot use this event as arbitrary upload.
+        // Voice uses small 16 kHz μ-law frames. Keep a firm bound so a client
+        // cannot use this event as an arbitrary upload channel.
         if (!audio || audio.length < 2 || audio.length > 16384 || audio.length % 2) return;
-        // Deliver every audio block, but skip compression: PCM is already
-        // compact enough for live voice and compression adds jitter under load.
+        // Deliver every audio block without transport compression; μ-law has
+        // already reduced the payload and extra compression adds jitter.
         socket.to(roomId).compress(false).emit('voice-audio', { from: socket.id, data: audio });
     });
 
