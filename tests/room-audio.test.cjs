@@ -13,6 +13,13 @@ test('silence and low-level hiss send no audio packets', () => {
     }
 });
 
+test('quiet speech opens the gate instead of being dropped', () => {
+    const encoder = new Encoder(16000);
+    const [packet] = encoder.push(new Float32Array(320).fill(0.005));
+    assert.equal(packet.speaking,true);
+    assert.ok(packet.pcm.some(value => Math.abs(Encoder.decodeMuLaw(value)) > 0.002));
+});
+
 for(const rate of [44100,48000,96000]) {
     test(`continuous ${rate} Hz input preserves exact sample count across block boundaries`, () => {
         const encoder = new Encoder(rate,16000,1000);

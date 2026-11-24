@@ -16,7 +16,7 @@
 
         encode(block) {
             const rms = Math.sqrt(block.reduce((sum, value) => sum + value * value, 0) / block.length);
-            const threshold = Math.max(0.007, Math.min(0.025, this.noise * 3));
+            const threshold = Math.max(0.003, Math.min(0.015, this.noise * 2.5));
             const speaking = rms > (this.hold > 0 ? threshold * 0.65 : threshold);
             if (speaking) this.hold = this.outputRate * 0.25;
             else {

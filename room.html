@@ -9,7 +9,7 @@
     <script src="https://player.vimeo.com/api/player.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="room-sync.js?v=1"></script>
-    <script src="room-audio.js?v=2"></script>
+    <script src="room-audio.js?v=3"></script>
     <style>
         :root {
             --primary: #00a8cc;
@@ -1475,6 +1475,7 @@
             chatMessageIds: new Set(), sync: new RoomPlaybackSync(), mediaGeneration: 0,
             syncRequestAt: null, transitMs: 0, localActionAt: -Infinity,
             remoteSeek: null, remoteVolume: null, observedPlaying: false, cuedTime: null,
+            roomUsers: [], voicePeers: new Set(),
             effectiveVolume: 100, ducked: false, speakers: new Map(), vimeoVolume: 100,
             voice: {
                 enabled: false,
@@ -1545,6 +1546,11 @@
         // Audio is relayed by the room service, rather than relying on a
         // direct peer-to-peer route that can be blocked by either network.
         socket.on('voice-audio', ({ from, data }) => playRelayedVoice(from, data));
+        socket.on('voice-presence', ({ id, active }) => {
+            if (active) state.voicePeers.add(id);
+            else state.voicePeers.delete(id);
+            updateUsersList(state.roomUsers);
+        });
 
         window.onYouTubeIframeAPIReady = () => { state.youtubeReady = true; };
 
@@ -2026,6 +2032,9 @@
         }
 
         function updateUsersList(users) {
+            state.roomUsers = users;
+            const currentIds = new Set(users.map((user) => user.id));
+            state.voicePeers = new Set([...state.voicePeers].filter((id) => currentIds.has(id)));
             const peopleTab = document.getElementById('peopleTab');
             peopleTab.textContent = '';
             users.forEach((user) => {
@@ -2036,6 +2045,8 @@
                 info.className = 'person-info';
                 info.innerHTML = `<div class="person-name"></div><div class="person-status">Online</div>`;
                 info.querySelector('.person-name').textContent = `${user.username}${user.id === socket.id ? ' (You)' : ''}`;
+                const micActive = user.id === socket.id ? state.voice.enabled : state.voicePeers.has(user.id);
+                info.querySelector('.person-status').textContent = micActive ? 'Mic on' : 'Online';
                 item.appendChild(info);
                 peopleTab.appendChild(item);
             });
@@ -2074,6 +2085,7 @@
             voiceBtn.innerHTML = active
                 ? '<i class="fas fa-microphone"></i> Mic on'
                 : '<i class="fas fa-microphone-slash"></i> Mic off';
+            updateUsersList(state.roomUsers);
         }
 
         async function toggleVoice() {
@@ -2084,8 +2096,7 @@
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        // Automatic gain can amplify room hiss during silence.
-                        autoGainControl: false,
+                        autoGainControl: true,
                         sampleRate: { ideal: 48000 },
                         channelCount: { ideal: 1 },
                         latency: { ideal: 0.01 }
@@ -2147,7 +2158,7 @@
             if (context.audioWorklet && window.AudioWorkletNode) {
                 try {
                     if (!relay.workletLoaded) {
-                        await context.audioWorklet.addModule('room-voice-processor.js?v=2');
+                        await context.audioWorklet.addModule('room-voice-processor.js?v=3');
                         relay.workletLoaded = true;
                     }
                     if (generation !== relay.generation) return;

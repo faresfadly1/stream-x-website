@@ -5,7 +5,7 @@
 <p>Uses a synthetic signal. Does not access the microphone or play any sound.</p>
 <button id="run">Run audio test</button>
 <pre id="result" role="status">Ready</pre>
-<script src="../room-audio.js?v=2"></script>
+<script src="../room-audio.js?v=3"></script>
 <script>
 document.getElementById('run').onclick = async () => {
     const button = document.getElementById('run');
@@ -16,7 +16,7 @@ document.getElementById('run').onclick = async () => {
         result.textContent = 'Testing the real browser AudioWorklet…';
         context = new AudioContext();
         await context.resume();
-        await context.audioWorklet.addModule('../room-voice-processor.js?v=2');
+        await context.audioWorklet.addModule('../room-voice-processor.js?v=3');
         const processor = new AudioWorkletNode(context, 'room-voice', {channelCount: 1});
         const source = context.createOscillator();
         source.frequency.value = 440;
