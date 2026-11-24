@@ -1033,9 +1033,9 @@
             <!-- Control Bar -->
             <div class="control-bar">
                 <div class="url-input-wrapper">
-                    <input type="text" class="url-input" id="urlInput" placeholder="Search any movie title" autocomplete="off">
-                    <div class="video-suggestions" id="videoSuggestions" aria-label="Movie search results"></div>
+                    <input type="url" class="url-input" id="urlInput" placeholder="Paste a movie link" autocomplete="url" inputmode="url" enterkeyhint="go" aria-label="Paste a movie link">
                 </div>
+                <button class="btn btn-primary play-link-btn" id="playLinkBtn" type="button"><i class="fas fa-play"></i> Play link</button>
                 <button class="close-btn">
                     <i class="fas fa-times"></i>
                 </button>
@@ -1046,12 +1046,11 @@
                 <div class="empty-state" id="emptyState">
                     <div class="empty-state-box">
                         <h2>You're not watching anything!</h2>
-                        <p>Pick something to watch above.</p>
+                        <p>Paste a movie link above and select Play link.</p>
                     </div>
                     <div class="error-message" id="errorMessage" style="display: none;">
                         <h3><i class="fas fa-exclamation-triangle"></i> Video Cannot Be Embedded</h3>
-                        <p>This video's owner has disabled embedding.</p>
-                        <p>Please choose another full-movie result from the search list.</p>
+                        <p>The page or its video player could not be embedded here.</p>
                     </div>
                 </div>
                 <div id="videoFrame" style="display: none; width: 100%; height: 100%;"></div>
@@ -1489,7 +1488,6 @@
         const emptyState = document.getElementById('emptyState');
         const errorMessage = document.getElementById('errorMessage');
         const urlInput = document.getElementById('urlInput');
-        const videoSuggestions = document.getElementById('videoSuggestions');
         const connectionStatus = document.getElementById('connectionStatus');
         const voiceBtn = document.getElementById('voiceBtn');
         const soundBtn = document.getElementById('soundBtn');
@@ -1577,6 +1575,7 @@
             try {
                 const url = new URL(value.trim());
                 if (/\.(mp4|webm|ogg|m3u8)(?:$|[?#])/i.test(url.pathname + url.search)) return { type: 'video', url: url.href };
+                if (url.protocol === 'http:' || url.protocol === 'https:') return { type: 'embed', url: url.href };
             } catch (_) { /* handled below */ }
             return null;
         }
@@ -1731,6 +1730,16 @@
                         if (window.Vimeo?.Player) { clearInterval(waitForApi); createVimeoPlayer(); }
                     }, 100);
                 }
+            } else if (media.type === 'embed') {
+                const frame = document.createElement('iframe');
+                frame.title = 'Shared movie link';
+                frame.src = media.url;
+                frame.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media';
+                frame.allowFullscreen = true;
+                frame.referrerPolicy = 'strict-origin-when-cross-origin';
+                frame.style.cssText = 'width:100%;height:100%;border:0;background:#000;';
+                videoFrame.appendChild(frame);
+                urlInput.value = media.url;
             } else {
                 const video = document.createElement('video');
                 video.src = media.url;
@@ -2214,182 +2223,21 @@
             updateVoiceButton();
         }
 
-        let searchTimer;
-        let searchRequest = 0;
-        let activeSearchController = null;
-        let playableResults = [];
-        let catalogueResults = [];
-        const movieSearchCache = new Map();
-
-        function searchCacheKey(query) {
-            return query.toLocaleLowerCase();
-        }
-
-        function cacheSearchResults(query) {
-            movieSearchCache.set(searchCacheKey(query), {
-                catalogue: catalogueResults,
-                playable: playableResults,
-                expiresAt: Date.now() + 5 * 60 * 1000
-            });
-        }
-
-        function mergeResults(current, incoming) {
-            const known = new Set(current.map((movie) => movie.id));
-            return [...current, ...incoming.filter((movie) => !known.has(movie.id))];
-        }
-
-        function renderSearchResults() {
-            // Show the comprehensive, current film catalogue first. The smaller
-            // direct-play list is deliberately separate so older public-domain
-            // titles never look like the only movies the user can search for.
-            showMovieResults(catalogueResults, playableResults);
-        }
-
-        function appendSearchSection(label) {
-            const heading = document.createElement('div');
-            heading.className = 'suggestion-section';
-            heading.textContent = label;
-            videoSuggestions.appendChild(heading);
-        }
-
-        function appendMovieResult(movie) {
-            const result = document.createElement('button');
-            result.type = 'button';
-            result.className = 'suggestion-item';
-            result.style.width = '100%';
-            result.innerHTML = `<img class="suggestion-thumbnail" alt=""><div class="suggestion-info"><div class="suggestion-title"></div><div class="suggestion-meta"></div></div>`;
-            const thumbnail = result.querySelector('img');
-            if (movie.poster) thumbnail.src = movie.poster;
-            else thumbnail.hidden = true;
-            result.querySelector('.suggestion-title').textContent = movie.title;
-            const canPlayInRoom = movie.kind === 'playable' && movie.url;
-            const canSearchYoutubeInRoom = !canPlayInRoom && Boolean(movie.tmdbId);
-            const subtitle = canSearchYoutubeInRoom
-                ? `${movie.year || ''} · Search YouTube in this room`
-                : `${movie.year || ''} · ${movie.actionLabel || 'Full movie · watch together'}`;
-            result.querySelector('.suggestion-meta').textContent = subtitle.replace(/^ · /, '');
-            result.title = canPlayInRoom
-                ? 'Play this YouTube video for everyone in the room'
-                : 'Search playable YouTube videos without leaving this room';
-            result.addEventListener('click', () => {
-                if (canPlayInRoom) chooseMedia(movie.url, movie.title);
-                else if (movie.tmdbId) {
-                    // A catalogue title is a search hint, not a stream. Keep
-                    // the person in the room and resolve it to verified
-                    // YouTube candidates instead of sending them elsewhere.
-                    urlInput.value = movie.title;
-                    searchFullMovies(movie.title);
-                }
-            });
-            videoSuggestions.appendChild(result);
-        }
-
-        function showMovieResults(catalogue = [], playable = []) {
-            videoSuggestions.textContent = '';
-            if (catalogue.length) {
-                appendSearchSection('All movie titles');
-                catalogue.forEach(appendMovieResult);
-            }
-            if (playable.length) {
-                appendSearchSection('YouTube videos you can play in this room');
-                playable.forEach(appendMovieResult);
-            }
-            if (catalogue.length && !playable.length) {
-                const status = document.createElement('div');
-                status.className = 'suggestion-status';
-                status.textContent = 'No public, embeddable long-form YouTube video was found for this title.';
-                videoSuggestions.appendChild(status);
-            }
-            videoSuggestions.classList.toggle('active', catalogue.length + playable.length > 0);
-        }
-
-        function showSearchStatus(message) {
-            videoSuggestions.textContent = '';
-            const status = document.createElement('div');
-            status.className = 'suggestion-status';
-            status.textContent = message;
-            videoSuggestions.appendChild(status);
-            videoSuggestions.classList.add('active');
-        }
-
-        function searchFullMovies(rawQuery) {
-            const query = rawQuery.trim();
-            const requestId = ++searchRequest;
-            activeSearchController?.abort();
-            activeSearchController = null;
-            if (query.length < 2) {
-                playableResults = [];
-                catalogueResults = [];
-                showMovieResults();
-                return;
-            }
-            const cached = movieSearchCache.get(searchCacheKey(query));
-            if (cached && cached.expiresAt > Date.now()) {
-                catalogueResults = cached.catalogue;
-                playableResults = cached.playable;
-                renderSearchResults();
-                return;
-            }
-            const controller = new AbortController();
-            activeSearchController = controller;
-            playableResults = [];
-            catalogueResults = [];
-            showSearchStatus(`Searching every movie title for “${query}”…`);
-            // Search the comprehensive title catalogue alongside the legal
-            // in-room catalogue. Whichever responds first renders first.
-            fetch(`${SERVER_URL}/api/movie-catalogue?q=${encodeURIComponent(query)}`, { signal: controller.signal })
-                .then((response) => response.ok ? response.json() : Promise.reject())
-                .then((data) => {
-                    if (requestId !== searchRequest) return;
-                    catalogueResults = data.results || [];
-                    renderSearchResults();
-                    cacheSearchResults(query);
-                })
-                .catch(() => { /* The in-room search can still succeed. */ });
-
-            fetch(`${SERVER_URL}/api/youtube-videos?q=${encodeURIComponent(query)}`, { signal: controller.signal })
-                .then((response) => response.ok ? response.json() : Promise.reject())
-                .then((data) => {
-                    if (requestId !== searchRequest) return;
-                    playableResults = data.results || [];
-                    renderSearchResults();
-                    cacheSearchResults(query);
-                })
-                .catch(() => {
-                    if (requestId === searchRequest && !catalogueResults.length) {
-                        showNotice('Movie search is temporarily unavailable. Please try again.', true);
-                    }
-                });
-        }
-
         function chooseMedia(value, title = '') {
             const media = getMediaFromUrl(value);
-            if (!media) return showNotice('Choose a full movie from the search results.', true);
+            if (!media) return showNotice('Paste a valid http or https link to play it in the room.', true);
             socket.emit('media-change', media);
-            videoSuggestions.classList.remove('active');
             if (title) showNotice(`Playing ${title} for everyone in the room.`);
+            else if (media.type === 'embed') showNotice('Link shared with the room. The site must allow embedding, and its playback controls may not sync.');
         }
 
-        urlInput.addEventListener('focus', () => {
-            if (urlInput.value.trim().length >= 2) searchFullMovies(urlInput.value.trim());
-        });
-        urlInput.addEventListener('input', () => {
-            // Never replace the field value while a result is being fetched;
-            // keeping the exact typed text also makes correcting a title easy.
-            const value = urlInput.value;
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => searchFullMovies(value), 200);
-        });
-        document.addEventListener('click', (event) => { if (!event.target.closest('.url-input-wrapper')) videoSuggestions.classList.remove('active'); });
+        const playLinkBtn = document.getElementById('playLinkBtn');
+        playLinkBtn.addEventListener('click', () => chooseMedia(urlInput.value));
         urlInput.addEventListener('keydown', (event) => {
             if (event.key !== 'Enter' || !urlInput.value.trim()) return;
             event.preventDefault();
-            const value = urlInput.value.trim();
-            clearTimeout(searchTimer);
-            searchFullMovies(value);
-            showNotice('Choose a result below. Full-movie matches start for everyone in the room.');
+            chooseMedia(urlInput.value);
         });
-        document.querySelectorAll('.suggestion-item').forEach((item) => item.addEventListener('click', () => chooseMedia(item.dataset.url)));
         document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
         soundBtn.addEventListener('click', enableRoomSound);
         document.addEventListener('pointerdown', (event) => {

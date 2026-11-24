@@ -660,6 +660,12 @@ function cleanMedia(value) {
             if (['http:', 'https:'].includes(url.protocol)) return { type: 'video', url: url.href };
         } catch (_) { /* Invalid URLs are rejected. */ }
     }
+    if (value.type === 'embed' && typeof value.url === 'string' && value.url.length <= 2000) {
+        try {
+            const url = new URL(value.url);
+            if (['http:', 'https:'].includes(url.protocol)) return { type: 'embed', url: url.href };
+        } catch (_) { /* Invalid URLs are rejected. */ }
+    }
     return null;
 }
 
