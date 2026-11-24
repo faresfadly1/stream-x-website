@@ -105,6 +105,28 @@ test('remote play/pause do not echo; an immediate opposite user action is sent',
     assert.equal(r.actions()[1][1].type,'play');
 });
 
+test('remote HTML video starts muted when autoplay audio is blocked, then follows pause', () => {
+    const r=room();
+    r.run(`
+        state.media={type:'video',url:'https://cdn.example/movie.mp4'};
+        state.ready=true;
+        state.player={paused:true,muted:false,volume:1,currentTime:0,
+            play(){this.paused=false;state.testVideoPlayed=true;return Promise.resolve();},
+            pause(){this.paused=true;state.testVideoPaused=true;}};
+        state.sync.receive({playing:true,currentTime:0,volume:100,updatedAt:1000});
+        applyPlayback(null,'play');
+    `);
+    assert.equal(r.run('state.testVideoPlayed'),true);
+    assert.equal(r.run('state.player.muted'),true);
+    r.tick(100);
+    r.run(`
+        state.sync.receive({playing:false,currentTime:0,volume:100,updatedAt:1100});
+        applyPlayback(null,'pause');
+    `);
+    assert.equal(r.run('state.testVideoPaused'),true);
+    assert.equal(r.actions().length,0);
+});
+
 test('in-sync snapshots do not issue seek/play/pause commands', () => {
     const r=room();r.state(r.snapshot());r.ready();
     r.player.commands=[];

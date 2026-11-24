@@ -1648,6 +1648,11 @@
                 state.autoplayMuted = false;
                 applyFilmVolume();
                 videoReady = true;
+            } else if (state.autoplayMuted && state.media?.type === 'video' && state.player) {
+                state.player.muted = false;
+                state.autoplayMuted = false;
+                applyFilmVolume();
+                videoReady = true;
             }
             if (voiceReady || videoReady) soundBtn.hidden = true;
             // Voice output is enabled automatically after a user gesture.
@@ -1663,8 +1668,10 @@
         document.addEventListener('keydown', unlockRoomAudio);
 
         function startMutedForAutoplay() {
-            if (state.audioUnlocked || state.media?.type !== 'youtube' || !state.player) return;
-            state.player.mute();
+            if (state.audioUnlocked || !state.player) return;
+            if (state.media?.type === 'youtube') state.player.mute();
+            else if (state.media?.type === 'video') state.player.muted = true;
+            else return;
             state.autoplayMuted = true;
             soundBtn.innerHTML = '<i class="fas fa-volume-up"></i> Enable sound';
             soundBtn.hidden = false;
@@ -1788,6 +1795,7 @@
         function rawPlayerVolume() {
             if (state.media?.type === 'vimeo') return state.vimeoVolume;
             if (state.media?.type === 'youtube') return state.player.isMuted() && !state.autoplayMuted ? 0 : state.player.getVolume();
+            if (state.autoplayMuted && state.player.muted) return state.lastVolume;
             return state.player.muted ? 0 : Math.round(state.player.volume * 100);
         }
 
@@ -1823,7 +1831,7 @@
                 state.player.setVolume(volume / 100).catch(() => {});
             } else {
                 state.player.volume = volume / 100;
-                if (volume > 0) state.player.muted = false;
+                if (volume > 0 && !state.autoplayMuted) state.player.muted = false;
             }
         }
 
@@ -1979,7 +1987,21 @@
                     state.player.pauseVideo();
                 }
             } else {
-                if (target.playing && state.player.paused) state.player.play().catch(() => showNotice('Press play once to enable audio in this browser.'));
+                if (target.playing && state.player.paused) {
+                    startMutedForAutoplay();
+                    state.player.play().catch(() => {
+                        if (state.media.type === 'video' && !state.autoplayMuted) {
+                            state.player.muted = true;
+                            state.autoplayMuted = true;
+                            soundBtn.innerHTML = '<i class="fas fa-volume-up"></i> Enable sound';
+                            soundBtn.hidden = false;
+                            showNotice('Video is synced. Select Enable sound once to hear it in this browser.');
+                            state.player.play().catch(() => showNotice('Tap Play once to start this video in your browser.'));
+                            return;
+                        }
+                        showNotice('Tap Play once to start this video in your browser.');
+                    });
+                }
                 else if (!target.playing && !state.player.paused) state.player.pause();
             }
             state.lastTime = time;
