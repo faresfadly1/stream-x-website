@@ -1536,8 +1536,9 @@
                 state.transitMs = Math.min(500, (performance.now() - state.syncRequestAt) / 2);
                 state.syncRequestAt = null;
             }
-            // An in-flight periodic snapshot must not undo a just-issued local action.
-            if (sameMedia(room.media, state.media) && performance.now() - state.localActionAt < 400) return;
+            // An in-flight room snapshot must not undo a just-issued local
+            // media change, including a clear that has not reached the server yet.
+            if (performance.now() - state.localActionAt < 400) return;
             if (room.media) loadMedia(room.media, room.playback);
             else showEmptyState();
         });
@@ -2266,6 +2267,10 @@
         function chooseMedia(value, title = '') {
             const media = getMediaFromUrl(value);
             if (!media) return showNotice('Paste a valid http or https link to play it in the room.', true);
+            // Render immediately so replacing a just-cleared link does not
+            // depend on waiting for the room server's broadcast to rebuild it.
+            state.localActionAt = performance.now();
+            loadMedia(media, { playing: false, currentTime: 0, volume: 100, updatedAt: Date.now() });
             socket.emit('media-change', media);
             if (title) showNotice(`Playing ${title} for everyone in the room.`);
             else if (media.type === 'embed' || (media.type === 'video' && !isDirectVideoUrl(media.url))) showNotice('Link shared with the room. The site must allow embedding, and its playback controls may not sync.');
@@ -2279,6 +2284,8 @@
             chooseMedia(urlInput.value);
         });
         document.querySelector('.close-btn').addEventListener('click', () => {
+            state.localActionAt = performance.now();
+            showEmptyState();
             urlInput.value = '';
             socket.emit('clear-media');
         });
