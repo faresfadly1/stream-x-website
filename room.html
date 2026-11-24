@@ -1989,6 +1989,7 @@
         function showEmptyState() {
             resetPlayer();
             state.media = null;
+            urlInput.value = '';
             videoFrame.style.display = 'none';
             emptyState.style.display = 'flex';
             errorMessage.style.display = 'none';
@@ -2244,7 +2245,10 @@
             event.preventDefault();
             chooseMedia(urlInput.value);
         });
-        document.querySelector('.close-btn').addEventListener('click', () => socket.emit('clear-media'));
+        document.querySelector('.close-btn').addEventListener('click', () => {
+            urlInput.value = '';
+            socket.emit('clear-media');
+        });
         soundBtn.addEventListener('click', enableRoomSound);
         document.addEventListener('pointerdown', (event) => {
             if (event.target !== soundBtn) enableRoomSound();
