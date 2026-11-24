@@ -84,6 +84,7 @@
         return ((sample & 0x80) ? (0x84 - magnitude) : (magnitude - 0x84)) / 32768;
     }
 
+    RoomVoiceEncoder.decodeMuLaw = decodeMuLaw;
     root.RoomVoiceEncoder = RoomVoiceEncoder;
     root.decodeRoomVoiceSample = decodeMuLaw;
     if (typeof module !== 'undefined' && module.exports) module.exports = RoomVoiceEncoder;

@@ -53,7 +53,8 @@ function room() {
         pauseVideo(){this.code=2;this.commands.push(['pause']);this.events.onStateChange({data:2});}
     };
     const sandbox = {
-        console,URL,URLSearchParams,Uint32Array,Int16Array,Float32Array,ArrayBuffer,Map,Set,RoomVoiceEncoder,
+        console,URL,URLSearchParams,Uint8Array,Uint32Array,Int16Array,Float32Array,ArrayBuffer,Map,Set,RoomVoiceEncoder,
+        decodeRoomVoiceSample:RoomVoiceEncoder.decodeMuLaw,
         RoomPlaybackSync: class extends RoomPlaybackSync {constructor(){super(()=>now);}},
         performance:{now:()=>now},
         location:{hostname:'localhost',search:'?room=regression-test',pathname:'/room.html'},
@@ -259,7 +260,7 @@ test('a microphone-off listener plays incoming speech and ducks the film without
             createBufferSource(){return {connect(){},disconnect(){},start(){state.testVoicePlayed=true;}};},
             createDynamicsCompressor(){return {threshold:{},knee:{},ratio:{},attack:{},release:{},connect(){}};}
         };
-        playRelayedVoice('friend',new Int16Array(1024).fill(6000).buffer);
+        playRelayedVoice('friend',new Uint8Array(320).fill(192).buffer);
         monitorYouTubePlayback();
     `);
     assert.equal(r.run('state.voice.enabled'),false);

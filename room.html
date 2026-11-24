@@ -2191,7 +2191,7 @@
                 energy += samples[index] * samples[index];
             }
             // Also filter silence from peers that still have an older page open.
-            if (Math.sqrt(energy / pcm.length) < 0.002) return;
+            if (Math.sqrt(energy / encoded.length) < 0.002) return;
             const source = context.createBufferSource();
             source.buffer = audio;
             const relay = state.voice.relay;
@@ -2218,7 +2218,7 @@
             }
             source.start(nextPlaybackAt);
             relay.playbackAt.set(peerId, nextPlaybackAt + audio.duration);
-            if (Math.sqrt(energy / pcm.length) >= 0.006) noteSpeech(peerId, (nextPlaybackAt - now + audio.duration) * 1000);
+            if (Math.sqrt(energy / encoded.length) >= 0.006) noteSpeech(peerId, (nextPlaybackAt - now + audio.duration) * 1000);
         }
 
         function leaveVoice() {

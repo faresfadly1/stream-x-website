@@ -15,28 +15,28 @@ test('silence and low-level hiss send no audio packets', () => {
 
 for(const rate of [44100,48000,96000]) {
     test(`continuous ${rate} Hz input preserves exact sample count across block boundaries`, () => {
-        const encoder = new Encoder(rate,24000,1000);
+        const encoder = new Encoder(rate,16000,1000);
         let count=0;
         for(let start=0;start<rate;start+=128) {
             const input=new Float32Array(Math.min(128,rate-start)).fill(0.1);
             for(const {pcm,speaking} of encoder.push(input)) {
                 assert.equal(speaking,true);count+=pcm.length;
-                assert.ok(pcm.every(v=>v>=0&&v<=3277));
+                assert.ok(pcm.every(v=>v>=0&&v<=255));
             }
         }
-        assert.equal(count,24000);
+        assert.equal(count,16000);
     });
 }
 
 test('gate has a soft attack, holds word gaps, and shuts off after silence', () => {
-    const encoder = new Encoder(24000);
-    const [voice]=encoder.push(new Float32Array(1024).fill(0.1));
-    assert.equal(voice.speaking,true);assert.ok(voice.pcm[0]<100);
-    assert.ok(voice.pcm[200]>3200);
-    const [gap]=encoder.push(new Float32Array(1024).fill(0.001));
-    assert.equal(gap.speaking,false);assert.ok(gap.pcm.some(v=>v>0));
-    for(let i=0;i<15;i++) encoder.push(new Float32Array(1024));
-    assert.equal(encoder.push(new Float32Array(1024)).length,0);
+    const encoder = new Encoder(16000);
+    const [voice]=encoder.push(new Float32Array(320).fill(0.1));
+    assert.equal(voice.speaking,true);assert.ok(Math.abs(Encoder.decodeMuLaw(voice.pcm[0]))<0.01);
+    assert.ok(Encoder.decodeMuLaw(voice.pcm[200])>0.08);
+    const [gap]=encoder.push(new Float32Array(320).fill(0.001));
+    assert.equal(gap.speaking,false);assert.ok(gap.pcm.some(v=>Encoder.decodeMuLaw(v)>0));
+    for(let i=0;i<15;i++) encoder.push(new Float32Array(320));
+    assert.equal(encoder.push(new Float32Array(320)).length,0);
 });
 
 test('worklet uses the same encoder and transfers speech without monitoring the microphone', () => {
@@ -50,7 +50,7 @@ test('worklet uses the same encoder and transfers speech without monitoring the 
     const processor=new Processor();
     const output=new Float32Array(128);
     for(let i=0;i<32;i++) assert.equal(processor.process([[new Float32Array(128).fill(0.1)]],[[output]]),true);
-    assert.equal(packets.length,2);assert.equal(packets[0].speaking,true);
-    assert.equal(packets[0].data.byteLength,2048);
+    assert.equal(packets.length,4);assert.equal(packets[0].speaking,true);
+    assert.equal(packets[0].data.byteLength,320);
     assert.ok(output.every(v=>v===0));
 });

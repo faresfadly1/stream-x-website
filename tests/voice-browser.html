@@ -5,6 +5,7 @@
 <p>Uses a synthetic signal. Does not access the microphone or play any sound.</p>
 <button id="run">Run audio test</button>
 <pre id="result" role="status">Ready</pre>
+<script src="../room-audio.js?v=2"></script>
 <script>
 document.getElementById('run').onclick = async () => {
     const button = document.getElementById('run');
@@ -15,7 +16,7 @@ document.getElementById('run').onclick = async () => {
         result.textContent = 'Testing the real browser AudioWorklet…';
         context = new AudioContext();
         await context.resume();
-        await context.audioWorklet.addModule('../room-voice-processor.js?v=1');
+        await context.audioWorklet.addModule('../room-voice-processor.js?v=2');
         const processor = new AudioWorkletNode(context, 'room-voice', {channelCount: 1});
         const source = context.createOscillator();
         source.frequency.value = 440;
@@ -31,14 +32,14 @@ document.getElementById('run').onclick = async () => {
             time: context.currentTime - start,
             speaking: data.speaking,
             length: data.data.byteLength,
-            peak: Math.max(...new Int16Array(data.data).map(Math.abs))
+            peak: Math.max(...Array.from(new Uint8Array(data.data), value => Math.abs(RoomVoiceEncoder.decodeMuLaw(value))))
         });
         source.start();
         await new Promise(resolve => setTimeout(resolve, 2200));
         source.stop();
         const speech = packets.filter(packet => packet.speaking);
-        const pass = speech.length >= 15 && packets.every(packet => packet.length === 2048)
-            && speech.some(packet => packet.peak > 1000)
+        const pass = speech.length >= 40 && packets.every(packet => packet.length === 320)
+            && speech.some(packet => packet.peak > 0.05)
             && !packets.some(packet => packet.time > 1.6);
         result.textContent = JSON.stringify({
             result: pass ? 'PASS' : 'FAIL', inputSampleRate: context.sampleRate,
