@@ -544,7 +544,12 @@ app.use((request, response, next) => {
     if (origin && allowedOrigins.has(origin)) response.setHeader('Access-Control-Allow-Origin', origin);
     next();
 });
-app.get('/health', (_request, response) => response.json({ ok: true, service: 'stream-x-watch-together' }));
+app.get('/health', (_request, response) => response.json({
+    ok: true,
+    service: 'stream-x-watch-together',
+    build: 'room-screen-share-v1',
+    features: { screenShare: true }
+}));
 app.get('/api/free-movies', (request, response) => {
     const query = normaliseSearch(request.query.q).slice(0, 80);
     const results = FREE_FULL_MOVIES
@@ -669,6 +674,26 @@ function cleanMedia(value) {
     return null;
 }
 
+function cleanScreenSignal(value) {
+    if (!value || typeof value !== 'object') return null;
+    if (['offer', 'answer'].includes(value.type) && typeof value.sdp === 'string' && value.sdp.length <= 50000) {
+        return { type: value.type, sdp: value.sdp };
+    }
+    if (value.type === 'candidate' && value.candidate && typeof value.candidate === 'object' &&
+        typeof value.candidate.candidate === 'string' && value.candidate.candidate.length <= 4096) {
+        return {
+            type: 'candidate',
+            candidate: {
+                candidate: value.candidate.candidate,
+                sdpMid: typeof value.candidate.sdpMid === 'string' ? value.candidate.sdpMid.slice(0, 128) : null,
+                sdpMLineIndex: Number.isInteger(value.candidate.sdpMLineIndex) ? value.candidate.sdpMLineIndex : null,
+                usernameFragment: typeof value.candidate.usernameFragment === 'string' ? value.candidate.usernameFragment.slice(0, 128) : null
+            }
+        };
+    }
+    return null;
+}
+
 function cleanNumber(value, min, max, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
@@ -678,6 +703,7 @@ function createRoom() {
     return {
         users: [],
         media: null,
+        screenOwnerId: null,
         playback: { playing: false, currentTime: 0, volume: 100, updatedAt: Date.now() },
         chatHistory: [],
         emptyRoomTimer: null
@@ -703,6 +729,7 @@ function publishRoomState(roomId, room) {
     io.to(roomId).emit('room-state', {
         users: room.users,
         media: room.media,
+        screenOwnerId: room.screenOwnerId,
         playback: currentPlayback(room),
         chatHistory: room.chatHistory
     });
@@ -725,7 +752,9 @@ io.on('connection', (socket) => {
         room.users = room.users.filter((user) => user.id !== socket.id);
         room.users.push({ id: socket.id, username: socket.data.username });
         publishRoomState(roomId, room);
+        socket.emit('server-features', { screenShare: true });
         socket.to(roomId).emit('notice', `${socket.data.username} joined the room`);
+        if (room.screenOwnerId) io.to(room.screenOwnerId).emit('screen-viewer-joined', { id: socket.id });
     });
 
     socket.on('media-change', (media) => {
@@ -743,6 +772,43 @@ io.on('connection', (socket) => {
         room.media = null;
         room.playback = { playing: false, currentTime: 0, volume: 100, updatedAt: Date.now() };
         io.to(socket.data.roomId).emit('media-change', { media: null, playback: room.playback });
+    });
+
+    socket.on('screen-start', () => {
+        const roomId = socket.data.roomId;
+        const room = rooms.get(roomId);
+        if (!room) return;
+        if (room.screenOwnerId && room.screenOwnerId !== socket.id) {
+            socket.emit('screen-error', 'Someone else is already sharing a tab in this room.');
+            return;
+        }
+        room.screenOwnerId = socket.id;
+        io.to(roomId).emit('screen-status', { ownerId: socket.id });
+        room.users.filter((user) => user.id !== socket.id).forEach((user) => {
+            io.to(socket.id).emit('screen-viewer-joined', { id: user.id });
+        });
+    });
+
+    socket.on('screen-stop', () => {
+        const roomId = socket.data.roomId;
+        const room = rooms.get(roomId);
+        if (!room || room.screenOwnerId !== socket.id) return;
+        room.screenOwnerId = null;
+        io.to(roomId).emit('screen-status', { ownerId: null });
+    });
+
+    socket.on('screen-signal', (message) => {
+        const roomId = socket.data.roomId;
+        const room = rooms.get(roomId);
+        const targetId = message && typeof message.targetId === 'string' ? message.targetId : '';
+        const signal = cleanScreenSignal(message?.signal);
+        if (!room || !room.screenOwnerId || !signal || targetId === socket.id ||
+            !room.users.some((user) => user.id === targetId)) return;
+
+        const isOwner = socket.id === room.screenOwnerId;
+        if ((isOwner && signal.type === 'answer') || (!isOwner && (targetId !== room.screenOwnerId || signal.type === 'offer'))) return;
+        if (isOwner && targetId === room.screenOwnerId) return;
+        io.to(targetId).emit('screen-signal', { from: socket.id, signal });
     });
 
     socket.on('playback-action', (action) => {
@@ -769,6 +835,7 @@ io.on('connection', (socket) => {
         if (room) socket.emit('room-state', {
             users: room.users,
             media: room.media,
+            screenOwnerId: room.screenOwnerId,
             playback: currentPlayback(room),
             chatHistory: room.chatHistory
         });
@@ -822,6 +889,10 @@ io.on('connection', (socket) => {
         const roomId = socket.data.roomId;
         const room = rooms.get(roomId);
         if (!room) return;
+        if (room.screenOwnerId === socket.id) {
+            room.screenOwnerId = null;
+            io.to(roomId).emit('screen-status', { ownerId: null });
+        }
         room.users = room.users.filter((user) => user.id !== socket.id);
         if (room.users.length === 0) keepEmptyRoomBriefly(roomId, room);
         else {

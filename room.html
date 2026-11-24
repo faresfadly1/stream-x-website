@@ -101,6 +101,16 @@
             color: var(--black);
         }
 
+        .screen-share-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--white);
+        }
+
+        .screen-share-btn.active {
+            background: var(--green);
+            color: var(--black);
+        }
+
         .btn {
             padding: 8px 20px;
             border-radius: 6px;
@@ -355,6 +365,40 @@
             max-width: 100%;
             border: 0;
             object-fit: contain;
+        }
+
+        .room-screen-share {
+            position: absolute;
+            inset: 0;
+            z-index: 4;
+            display: grid;
+            place-items: center;
+            background: #000;
+        }
+
+        .room-screen-share[hidden] { display: none; }
+
+        .room-screen-share video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }
+
+        .room-screen-share-hint {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            width: fit-content;
+            max-width: calc(100% - 24px);
+            margin: auto;
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: var(--white);
+            background: rgba(0, 0, 0, 0.72);
+            font-size: 13px;
+            text-align: center;
         }
 
         .empty-state {
@@ -829,6 +873,16 @@
                 font-size: 15px;
             }
 
+            #screenShareBtn {
+                width: 38px;
+                height: 38px;
+                padding: 0;
+                justify-content: center;
+                font-size: 0;
+            }
+
+            #screenShareBtn i { font-size: 15px; }
+
             .control-bar {
                 padding: 10px 12px;
                 gap: 8px;
@@ -1020,6 +1074,9 @@
             <button class="btn voice-btn" id="voiceBtn" type="button" aria-pressed="false">
                 <i class="fas fa-microphone"></i> Mic off
             </button>
+            <button class="btn screen-share-btn" id="screenShareBtn" type="button" aria-pressed="false" title="Share this browser tab and its audio with the room">
+                <i class="fas fa-display"></i> Share tab
+            </button>
             <button class="btn btn-primary">
                 <i class="fas fa-plus"></i> New Room
             </button>
@@ -1054,6 +1111,10 @@
                     </div>
                 </div>
                 <div id="videoFrame" style="display: none; width: 100%; height: 100%;"></div>
+                <div class="room-screen-share" id="roomScreenShare" hidden>
+                    <video id="roomScreenVideo" autoplay playsinline></video>
+                    <div class="room-screen-share-hint" id="roomScreenShareHint" role="status"></div>
+                </div>
             </div>
         </div>
 
@@ -1476,6 +1537,7 @@
             syncRequestAt: null, transitMs: 0, localActionAt: -Infinity,
             remoteSeek: null, remoteVolume: null, observedPlaying: false, cuedTime: null,
             roomUsers: [], voicePeers: new Set(),
+            screen: { ownerId: null, stream: null, peers: new Map(), pendingIce: new Map(), offerPending: new Set(), supported: false },
             effectiveVolume: 100, ducked: false, speakers: new Map(), vimeoVolume: 100,
             voice: {
                 enabled: false,
@@ -1491,6 +1553,10 @@
         const urlInput = document.getElementById('urlInput');
         const connectionStatus = document.getElementById('connectionStatus');
         const voiceBtn = document.getElementById('voiceBtn');
+        const screenShareBtn = document.getElementById('screenShareBtn');
+        const roomScreenShare = document.getElementById('roomScreenShare');
+        const roomScreenVideo = document.getElementById('roomScreenVideo');
+        const roomScreenShareHint = document.getElementById('roomScreenShareHint');
         const soundBtn = document.getElementById('soundBtn');
         const usernameKey = 'stream-x-display-name';
         const savedName = localStorage.getItem(usernameKey);
@@ -1524,13 +1590,17 @@
             socket.emit('join-room', state.roomId, username);
             if (state.voice.enabled) socket.emit('voice-join');
         });
-        socket.on('disconnect', () => setConnectionStatus('Reconnecting…'));
+        socket.on('disconnect', () => {
+            setConnectionStatus('Reconnecting…');
+            if (state.screen.stream) stopScreenShare(false);
+        });
         socket.on('connect_error', () => setConnectionStatus('Live service unavailable', 'error'));
         socket.on('room-error', (message) => showNotice(message, true));
         socket.on('notice', (message) => addChatMessage('Room', message, true));
         socket.on('chat-message', (message) => addChatMessage(message.username, message.message, false, message.id));
         socket.on('room-state', (room) => {
             updateUsersList(room.users || []);
+            setScreenOwner(room.screenOwnerId || null);
             (room.chatHistory || []).forEach((message) => addChatMessage(message.username, message.message, false, message.id));
             if (state.syncRequestAt !== null) {
                 state.transitMs = Math.min(500, (performance.now() - state.syncRequestAt) / 2);
@@ -1551,6 +1621,19 @@
             if (active) state.voicePeers.add(id);
             else state.voicePeers.delete(id);
             updateUsersList(state.roomUsers);
+        });
+        socket.on('screen-status', ({ ownerId }) => setScreenOwner(ownerId || null));
+        socket.on('server-features', (features) => {
+            state.screen.supported = features?.screenShare === true;
+            updateScreenShareButton();
+        });
+        socket.on('screen-viewer-joined', ({ id }) => {
+            if (state.screen.ownerId === socket.id && state.screen.stream) createScreenOffer(id);
+        });
+        socket.on('screen-signal', (message) => handleScreenSignal(message));
+        socket.on('screen-error', (message) => {
+            stopScreenShare(false);
+            showNotice(message || 'Screen sharing is unavailable in this room.', true);
         });
 
         window.onYouTubeIframeAPIReady = () => { state.youtubeReady = true; };
@@ -2052,6 +2135,237 @@
                 peopleTab.appendChild(item);
             });
             document.querySelector('.tab .badge').textContent = users.length;
+            reconcileScreenPeers(users);
+        }
+
+        function updateScreenShareButton() {
+            const sharing = Boolean(state.screen.stream && state.screen.ownerId === socket.id);
+            const anotherHost = Boolean(state.screen.ownerId && state.screen.ownerId !== socket.id);
+            screenShareBtn.classList.toggle('active', sharing);
+            screenShareBtn.setAttribute('aria-pressed', String(sharing));
+            screenShareBtn.disabled = !state.screen.supported || anotherHost;
+            screenShareBtn.innerHTML = sharing
+                ? '<i class="fas fa-stop"></i> Stop share'
+                : anotherHost
+                    ? '<i class="fas fa-display"></i> Watching tab'
+                    : '<i class="fas fa-display"></i> Share tab';
+            screenShareBtn.title = sharing
+                ? 'Stop sharing this browser tab with the room'
+                : anotherHost
+                    ? 'Another room member is sharing their browser tab'
+                    : state.screen.supported
+                        ? 'Share a browser tab and its audio with everyone in the room'
+                        : 'The room server must be updated before tab sharing is available';
+        }
+
+        function closeScreenPeer(peerId) {
+            const peer = state.screen.peers.get(peerId);
+            if (peer) {
+                peer.onicecandidate = null;
+                peer.ontrack = null;
+                peer.close();
+                state.screen.peers.delete(peerId);
+            }
+            state.screen.pendingIce.delete(peerId);
+            state.screen.offerPending.delete(peerId);
+        }
+
+        function closeScreenPeers() {
+            for (const peerId of [...state.screen.peers.keys()]) closeScreenPeer(peerId);
+        }
+
+        function makeScreenPeer(peerId) {
+            if (state.screen.peers.has(peerId)) return state.screen.peers.get(peerId);
+            if (!window.RTCPeerConnection) {
+                showNotice('This browser does not support live tab sharing.', true);
+                return null;
+            }
+            const peer = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun.cloudflare.com:3478' }
+                ]
+            });
+            state.screen.peers.set(peerId, peer);
+            peer.onicecandidate = ({ candidate }) => {
+                if (candidate && socket.connected) socket.emit('screen-signal', {
+                    targetId: peerId,
+                    signal: { type: 'candidate', candidate: candidate.toJSON() }
+                });
+            };
+            peer.ontrack = ({ streams }) => {
+                if (state.screen.ownerId === socket.id || state.screen.ownerId !== peerId) return;
+                const stream = streams[0];
+                if (!stream) return;
+                roomScreenVideo.srcObject = stream;
+                roomScreenVideo.play().catch(() => {
+                    roomScreenShareHint.textContent = 'Tap the shared video to start playback and hear tab audio.';
+                });
+                roomScreenShareHint.textContent = `Shared by ${state.roomUsers.find((user) => user.id === peerId)?.username || 'room host'}. The sharer controls playback.`;
+                roomScreenShare.hidden = false;
+            };
+            peer.onconnectionstatechange = () => {
+                if (peer.connectionState === 'failed') {
+                    roomScreenShareHint.textContent = 'This network could not connect to the shared tab. Try another network or a supported player.';
+                    showNotice('Could not connect to the shared tab on this network.', true);
+                }
+            };
+            return peer;
+        }
+
+        async function createScreenOffer(peerId) {
+            if (!peerId || peerId === socket.id || !state.screen.stream || state.screen.ownerId !== socket.id) return;
+            const existing = state.screen.peers.get(peerId);
+            if ((existing && (existing.localDescription || existing.remoteDescription)) || state.screen.offerPending.has(peerId)) return;
+            state.screen.offerPending.add(peerId);
+            try {
+                const peer = makeScreenPeer(peerId);
+                if (!peer || peer.signalingState !== 'stable') return;
+                state.screen.stream.getTracks().forEach((track) => peer.addTrack(track, state.screen.stream));
+                const offer = await peer.createOffer();
+                await peer.setLocalDescription(offer);
+                socket.emit('screen-signal', { targetId: peerId, signal: peer.localDescription.toJSON() });
+            } catch (_) {
+                closeScreenPeer(peerId);
+                showNotice('Could not start tab sharing with a room member.', true);
+            } finally {
+                state.screen.offerPending.delete(peerId);
+            }
+        }
+
+        function flushScreenIce(peerId, peer) {
+            const queued = state.screen.pendingIce.get(peerId) || [];
+            state.screen.pendingIce.delete(peerId);
+            queued.forEach((candidate) => peer.addIceCandidate(candidate).catch(() => {}));
+        }
+
+        async function handleScreenSignal(message) {
+            const { from, signal } = message || {};
+            if (!from || !signal || typeof signal !== 'object') return;
+            try {
+                const peer = makeScreenPeer(from);
+                if (!peer) return;
+                if (signal.type === 'offer') {
+                    if (state.screen.ownerId !== from || state.screen.stream) return;
+                    await peer.setRemoteDescription(signal);
+                    flushScreenIce(from, peer);
+                    const answer = await peer.createAnswer();
+                    await peer.setLocalDescription(answer);
+                    socket.emit('screen-signal', { targetId: from, signal: peer.localDescription.toJSON() });
+                } else if (signal.type === 'answer') {
+                    if (state.screen.ownerId !== socket.id || !state.screen.stream) return;
+                    await peer.setRemoteDescription(signal);
+                    flushScreenIce(from, peer);
+                } else if (signal.type === 'candidate' && signal.candidate) {
+                    const candidate = new RTCIceCandidate(signal.candidate);
+                    if (peer.remoteDescription) await peer.addIceCandidate(candidate);
+                    else {
+                        const queued = state.screen.pendingIce.get(from) || [];
+                        queued.push(candidate);
+                        state.screen.pendingIce.set(from, queued);
+                    }
+                }
+            } catch (_) {
+                showNotice('The shared-tab connection could not be completed.', true);
+            }
+        }
+
+        function reconcileScreenPeers(users) {
+            const ids = new Set(users.map((user) => user.id));
+            for (const peerId of [...state.screen.peers.keys()]) {
+                if (!ids.has(peerId)) closeScreenPeer(peerId);
+            }
+            if (state.screen.ownerId === socket.id && state.screen.stream) {
+                users.forEach((user) => {
+                    if (user.id !== socket.id && !state.screen.peers.has(user.id)) createScreenOffer(user.id);
+                });
+            } else if (state.screen.ownerId && !ids.has(state.screen.ownerId)) {
+                setScreenOwner(null);
+            }
+        }
+
+        function setScreenOwner(ownerId) {
+            if (ownerId === state.screen.ownerId) {
+                updateScreenShareButton();
+                return;
+            }
+            const previousOwner = state.screen.ownerId;
+            state.screen.ownerId = ownerId;
+            closeScreenPeers();
+            if (previousOwner === socket.id && state.screen.stream && ownerId !== socket.id) {
+                state.screen.stream.getTracks().forEach((track) => track.stop());
+                state.screen.stream = null;
+            }
+            if (!ownerId) {
+                roomScreenVideo.pause();
+                roomScreenVideo.srcObject = null;
+                roomScreenShare.hidden = true;
+                roomScreenShareHint.textContent = '';
+            } else if (ownerId === socket.id) {
+                roomScreenShare.hidden = true;
+                if (state.screen.stream) reconcileScreenPeers(state.roomUsers);
+            } else {
+                const owner = state.roomUsers.find((user) => user.id === ownerId);
+                roomScreenVideo.srcObject = null;
+                roomScreenShareHint.textContent = `Waiting for ${owner?.username || 'the room host'}'s shared tab…`;
+                roomScreenShare.hidden = false;
+            }
+            updateScreenShareButton();
+        }
+
+        async function startScreenShare() {
+            if (!state.screen.supported) {
+                showNotice('Tab sharing is not available until the room server is updated.', true);
+                return;
+            }
+            if (!socket.connected) {
+                showNotice('Wait for the room to reconnect before sharing a tab.', true);
+                return;
+            }
+            if (!navigator.mediaDevices?.getDisplayMedia) {
+                showNotice('Tab sharing needs a browser that supports screen capture.', true);
+                return;
+            }
+            if (state.screen.ownerId && state.screen.ownerId !== socket.id) return;
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { frameRate: { ideal: 30, max: 30 } },
+                    audio: true
+                });
+                const videoTrack = stream.getVideoTracks()[0];
+                if (!videoTrack) {
+                    stream.getTracks().forEach((track) => track.stop());
+                    showNotice('Choose a browser tab or screen to share.', true);
+                    return;
+                }
+                state.screen.stream = stream;
+                state.screen.ownerId = socket.id;
+                videoTrack.addEventListener('ended', () => stopScreenShare());
+                socket.emit('screen-start');
+                updateScreenShareButton();
+                if (!stream.getAudioTracks().length) {
+                    showNotice('Tab is shared, but no tab audio was captured. Choose the browser tab and enable Share tab audio.');
+                } else {
+                    showNotice('Your tab and its audio are being shared. You control playback for the room.');
+                }
+                reconcileScreenPeers(state.roomUsers);
+            } catch (error) {
+                if (error.name !== 'NotAllowedError') showNotice('Could not share this browser tab.', true);
+            }
+        }
+
+        function stopScreenShare(notifyServer = true) {
+            const wasOwner = state.screen.ownerId === socket.id && Boolean(state.screen.stream);
+            if (notifyServer && wasOwner && socket.connected) socket.emit('screen-stop');
+            state.screen.stream?.getTracks().forEach((track) => track.stop());
+            state.screen.stream = null;
+            if (state.screen.ownerId === socket.id) state.screen.ownerId = null;
+            closeScreenPeers();
+            roomScreenVideo.pause();
+            roomScreenVideo.srcObject = null;
+            roomScreenShare.hidden = true;
+            roomScreenShareHint.textContent = '';
+            updateScreenShareButton();
         }
 
         function addChatMessage(sender, message, isSystem = false, messageId = null) {
@@ -2273,7 +2587,7 @@
             loadMedia(media, { playing: false, currentTime: 0, volume: 100, updatedAt: Date.now() });
             socket.emit('media-change', media);
             if (title) showNotice(`Playing ${title} for everyone in the room.`);
-            else if (media.type === 'embed' || (media.type === 'video' && !isDirectVideoUrl(media.url))) showNotice('Link shared with the room. The site must allow embedding, and its playback controls may not sync.');
+            else if (media.type === 'embed' || (media.type === 'video' && !isDirectVideoUrl(media.url))) showNotice('Page shared. For live synchronized playback, select Share tab and enable tab audio.');
         }
 
         const playLinkBtn = document.getElementById('playLinkBtn');
@@ -2288,6 +2602,14 @@
             showEmptyState();
             urlInput.value = '';
             socket.emit('clear-media');
+        });
+        screenShareBtn.addEventListener('click', () => {
+            if (state.screen.stream && state.screen.ownerId === socket.id) stopScreenShare();
+            else startScreenShare();
+        });
+        roomScreenVideo.addEventListener('click', () => {
+            roomScreenVideo.muted = false;
+            roomScreenVideo.play().catch(() => showNotice('Tap the shared video again to enable its audio.'));
         });
         soundBtn.addEventListener('click', enableRoomSound);
         document.addEventListener('pointerdown', (event) => {
